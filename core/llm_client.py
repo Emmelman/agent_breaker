@@ -1,9 +1,10 @@
 """
 LLM Studio client for Agent-Breaker.
 """
+import re
+import json
 import requests
 from typing import Optional, Dict, Any, List
-import json
 
 
 class LLMClient:
@@ -71,7 +72,10 @@ class LLMClient:
             response.raise_for_status()
             
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            choices = data.get("choices")
+            if not choices:
+                raise ValueError(f"LLM returned no choices: {data}")
+            return choices[0].get("message", {}).get("content", "")
             
         except requests.exceptions.RequestException as e:
             raise Exception(f"LLM request failed: {e}")
@@ -166,18 +170,7 @@ class LLMClient:
 
         try:
             response = self.complete(user_prompt, system_prompt, temperature=0.3)
-            
-            # Clean response (remove markdown if present)
-            response = response.strip()
-            if response.startswith("```json"):
-                response = response[7:]
-            if response.startswith("```"):
-                response = response[3:]
-            if response.endswith("```"):
-                response = response[:-3]
-            response = response.strip()
-            
-            # Parse JSON
+            response = self.clean_json_response(response)
             result = json.loads(response)
             return result
             
@@ -209,9 +202,18 @@ class LLMClient:
             url = f"{self.base_url}/v1/models"
             response = requests.get(url, timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
-    
+
+    @staticmethod
+    def clean_json_response(response: str) -> str:
+        """Strip markdown code fences from an LLM JSON response."""
+        response = response.strip()
+        match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response)
+        if match:
+            return match.group(1).strip()
+        return response
+
     def get_models(self) -> List[str]:
         """
         Get list of available models.
@@ -226,5 +228,5 @@ class LLMClient:
             
             data = response.json()
             return [model["id"] for model in data.get("data", [])]
-        except:
+        except Exception:
             return []

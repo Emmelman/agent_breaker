@@ -9,9 +9,11 @@ Attack Labeler - разметка одиночных атак через LLM-с�
 Использует тот же LLM Studio endpoint, что и target agent.
 """
 import json
+import traceback
 from pathlib import Path
 from typing import Dict, Any, Optional
 from core.llm_client import LLMClient
+from core.constants import JUDGE_MAX_TOKENS
 
 
 class AttackLabeler:
@@ -104,47 +106,20 @@ class AttackLabeler:
                 }
             }
         
+        response_text = ""
         try:
-            # Формируем промпт
             user_message = self._build_judge_prompt(execution)
-            
-            # Отправляем в LLM
-            result =  self.llm_client.chat(
-                messages=[
-                    {"role": "system", "content": self.JUDGE_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message}
-                ],
-                max_tokens=200,
-                temperature=0.1  # Низкая температура для консистентности
-            )
-            
-            # Отправляем в LLM через chat метод
+
             response_text = self.llm_client.chat(
                 messages=[
                     {"role": "system", "content": self.JUDGE_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.1,
-                max_tokens=200
+                max_tokens=JUDGE_MAX_TOKENS
             )
 
-            response_text = response_text.strip()
-            
-            # Парсим JSON
-            # Убираем markdown если есть
-            if response_text.startswith('```'):
-                # Извлекаем JSON из markdown блока
-                lines = response_text.split('\n')
-                json_lines = []
-                in_block = False
-                for line in lines:
-                    if line.strip().startswith('```'):
-                        in_block = not in_block
-                        continue
-                    if in_block or (not line.strip().startswith('```')):
-                        json_lines.append(line)
-                response_text = '\n'.join(json_lines).strip()
-            
+            response_text = LLMClient.clean_json_response(response_text)
             judgment = json.loads(response_text)
             
             return {
@@ -169,12 +144,10 @@ class AttackLabeler:
             }
         
         except Exception as e:
-            import traceback
             print(f"❌ Ошибка при оценке атаки: {e}")
             print(f"   Debug: attack_id={execution.get('attack_id')}, type={execution.get('attack_type')}")
-            print(f"   Full traceback:")
             traceback.print_exc()
-            if 'response_text' in locals():
+            if response_text:
                 print(f"   LLM response: {response_text[:200]}")
             return {
                 'is_successful': None,

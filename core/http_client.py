@@ -147,12 +147,12 @@ class HTTPAgentClient:
                     return data.get("status") == "healthy"
                 return False
         
-        except:
-            # If health endpoint doesn't exist, try regular endpoint with simple message
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            # Если health endpoint не существует, пробуем основной
             try:
                 result = await self.send_message("Привет")
                 return result["error"] is None
-            except:
+            except Exception:
                 return False
     
     @staticmethod
@@ -173,14 +173,14 @@ class HTTPAgentClient:
             health_url = api_url.replace("/api/chat", "/api/health")
             response = requests.get(health_url, timeout=timeout)
             return response.status_code == 200
-        except:
-            # Try chat endpoint
+        except requests.RequestException:
+            # Пробуем chat endpoint
             try:
                 response = requests.post(
                     api_url,
                     json={"user_id": "test", "message": "test"},
                     timeout=timeout
                 )
-                return response.status_code in [200, 400]  # 400 also means API is up
-            except:
+                return response.status_code in [200, 400]  # 400 тоже означает что API доступен
+            except requests.RequestException:
                 return False

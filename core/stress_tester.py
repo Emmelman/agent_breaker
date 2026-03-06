@@ -4,12 +4,11 @@ Stress Tester - bombards target agent with attacks.
 import asyncio
 import json
 import random
-import uuid
+import traceback
 from pathlib import Path
 from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
-from models.multi_turn import MultiTurnChain, ChainExecution
-from models.attack import AttackSet, PromptInjectionAttack, ToxicityTest
+from models.attack import AttackSet
 from models.test import (
     TestMode,
     TestStatus,
@@ -21,6 +20,7 @@ from models.test import (
     LiveEvent
 )
 from core.http_client import HTTPAgentClient
+from core.constants import generate_test_id, RETRYABLE_ERROR_PATTERNS
 
 
 class StressTester:
@@ -81,7 +81,7 @@ class StressTester:
         print(f"   - Toxicity тесты: {len(attack_set.toxicity_tests)}")
         
         # Initialize test run
-        test_id = str(uuid.uuid4())[:8]
+        test_id = generate_test_id()
         self.test_run = TestRun(
             test_id=test_id,
             mode=self.config.mode,
@@ -141,7 +141,6 @@ class StressTester:
         
         except Exception as e:
             print(f"\n\n❌ ОШИБКА: {e}")
-            import traceback
             traceback.print_exc()
             self.test_run.status = TestStatus.FAILED
         
@@ -163,44 +162,6 @@ class StressTester:
         
         return self.test_run
     
-    async def _run_multi_turn_chain(
-        self,
-        chain: MultiTurnChain,
-        http_client: HTTPAgentClient
-    ) -> ChainExecution:
-        """Выполнить multi-turn цепочку"""
-        
-        conversation_id = None
-        execution = ChainExecution(
-            chain_id=chain.chain_id,
-            conversation_id=""
-        )
-        
-        for step in chain.steps:
-            # Отправляем шаг
-            result = await http_client.send_message(
-                message=step.payload,
-                conversation_id=conversation_id  # ← СОХРАНЯЕМ!
-            )
-            
-            # Обновляем conversation_id
-            if result.get("conversation_id"):
-                conversation_id = result["conversation_id"]
-                if not execution.conversation_id:
-                    execution.conversation_id = conversation_id
-            
-            # Сохраняем результат
-            step.response = result.get("response")
-            execution.executed_steps.append(step)
-            
-            # Задержка между шагами
-            await asyncio.sleep(2)
-        
-        execution.completed = True
-        execution.total_steps = len(execution.executed_steps)
-        
-        return execution
-
     async def _run_http_test(self, attack_set: AttackSet):
         """Run HTTP-based stress test."""
         # Prepare attack list
@@ -213,30 +174,29 @@ class StressTester:
         total_duration = self.config.duration_minutes * 60  # seconds
         attacks_per_client = len(all_attacks) // self.config.num_clients
         
+        num_clients = self.config.num_clients
         if attacks_per_client == 0:
             attacks_per_client = 1
-            self.config.num_clients = len(all_attacks)
-            print(f"⚠️  Скорректировано: {self.config.num_clients} клиентов")
+            num_clients = len(all_attacks)
+            print(f"⚠️  Скорректировано: {num_clients} клиентов")
         
         # Initialize client stats
-        client_stats = [ClientStats(client_id=i) for i in range(self.config.num_clients)]
+        client_stats = [ClientStats(client_id=i) for i in range(num_clients)]
         self.test_run.client_stats = client_stats
-        
+
         # Start time
         start_time = datetime.utcnow()
         end_time = start_time + timedelta(minutes=self.config.duration_minutes)
-        
+
         # Create HTTP client
         async with HTTPAgentClient(self.config.target_url, self.config.request_timeout) as client:
             # Create tasks for each client
             tasks = []
-            for client_id in range(self.config.num_clients):
-                # Assign attacks to this client
+            for client_id in range(num_clients):
                 start_idx = client_id * attacks_per_client
-                
-                # ✅ ДОБАВИТЬ ЭТИ СТРОКИ:
-                # Last client gets all remaining attacks (handles rounding)
-                if client_id == self.config.num_clients - 1:
+
+                # Последний клиент получает все оставшиеся атаки
+                if client_id == num_clients - 1:
                     end_idx = len(all_attacks)  # All remaining
                 else:
                     end_idx = start_idx + attacks_per_client
@@ -338,8 +298,7 @@ class StressTester:
                 should_retry = False
                 if result.get("error"):
                     error_msg = result.get("error", "")
-                    # Retry on timeout or 500 errors
-                    if "Timeout" in error_msg or "HTTP 500" in error_msg or "HTTP 503" in error_msg:
+                    if any(pattern in error_msg for pattern in RETRYABLE_ERROR_PATTERNS):
                         should_retry = True
                 
                 # Break if success or max retries reached

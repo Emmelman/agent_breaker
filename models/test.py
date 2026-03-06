@@ -6,6 +6,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from core.constants import SINGLE_TURN_DEFAULT_RESISTANCE
+
 
 class TestMode(str, Enum):
     """Test execution mode."""
@@ -286,14 +288,14 @@ class HybridTestRun(BaseModel):
                 if total_weight > 0:
                     # Single-turn: assume 80% resistance (no leak detection yet)
                     # Multi-turn: use actual resistance score
-                    single_resistance = 80.0
+                    single_resistance = SINGLE_TURN_DEFAULT_RESISTANCE
                     self.overall_resistance_score = (
                         (single_resistance * single_weight + avg_resistance * multi_weight) / total_weight
                     )
             elif self.multi_turn_enabled:
                 self.overall_resistance_score = avg_resistance
             else:
-                self.overall_resistance_score = 80.0  # Default for single-turn only
+                self.overall_resistance_score = SINGLE_TURN_DEFAULT_RESISTANCE
         
         # Exploitation rate
         if self.total_attacks_sent > 0:

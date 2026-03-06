@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.analysis import AnalysisConfig
 from core.code_analyzer import CodeAnalyzer
+from core.config_loader import load_config
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -168,15 +169,20 @@ def main():
     
     console.print("\n🚀 [bold]Agent-Breaker Анализатор кода[/bold]\n", style="blue")
     
-    # Configuration
+    # Загружаем настройки из config.yaml
+    yaml_cfg = load_config()
+    target_cfg = yaml_cfg.get("target", {})
+    llm_cfg = yaml_cfg.get("llm", {})
+    analysis_cfg = yaml_cfg.get("code_analysis", {})
+
     config = AnalysisConfig(
-        target_path="C:/Users/Nikita/Documents/Python Projects/chatbot-professor_v2/app",
-        file_extensions=[".py"],
-        exclude_dirs=["__pycache__", ".git", "venv", ".venv"],
-        max_file_size_kb=500,
-        llm_base_url="http://127.0.0.1:1234",
-        llm_model="gemma-3-12b-it",
-        llm_temperature=0.1,  # Очень низкая для стабильных результатов
+        target_path=target_cfg.get("code_path", ""),
+        file_extensions=analysis_cfg.get("file_extensions", [".py"]),
+        exclude_dirs=analysis_cfg.get("exclude_dirs", ["__pycache__", ".git", "venv", ".venv"]),
+        max_file_size_kb=analysis_cfg.get("max_file_size_kb", 500),
+        llm_base_url=llm_cfg.get("base_url", "http://127.0.0.1:1234"),
+        llm_model=llm_cfg.get("model", "gemma-3-12b-it"),
+        llm_temperature=0.1,  # Низкая для стабильных результатов
         llm_max_tokens=3000  # Увеличено для детальных ответов
     )
     

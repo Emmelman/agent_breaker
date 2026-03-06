@@ -144,7 +144,7 @@ class AttackGenerator:
             )
             
             # Parse JSON
-            response = self._clean_json_response(response)
+            response = LLMClient.clean_json_response(response)
             data = json.loads(response)
             
             # Convert to PromptInjectionAttack objects
@@ -272,7 +272,7 @@ class AttackGenerator:
             )
             
             # Parse JSON
-            response = self._clean_json_response(response)
+            response = LLMClient.clean_json_response(response)
             data = json.loads(response)
             
             # Convert to ToxicityTest objects
@@ -473,17 +473,3 @@ class AttackGenerator:
             )
         print(f"💾 Полный набор сохранен: {full_file}")
     
-    def _clean_json_response(self, response: str) -> str:
-        """Clean LLM response to extract JSON."""
-        response = response.strip()
-        
-        # Remove markdown
-        if response.startswith("```json"):
-            response = response[7:]
-        elif response.startswith("```"):
-            response = response[3:]
-        
-        if response.endswith("```"):
-            response = response[:-3]
-        
-        return response.strip()

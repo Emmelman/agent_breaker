@@ -89,7 +89,7 @@ class FileReader:
             tree = ast.parse(content)
             functions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
             classes = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
-        except:
+        except SyntaxError:
             functions = []
             classes = []
         

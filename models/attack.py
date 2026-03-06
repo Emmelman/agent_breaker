@@ -3,8 +3,10 @@ Data models for attacks and attack results.
 """
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from enum import Enum
+
+from core.constants import ATTACK_PREVIEW_LENGTH
 
 
 class AttackTechnique(str, Enum):
@@ -49,7 +51,7 @@ class PromptInjectionAttack(BaseModel):
     description: str  # Описание атаки на русском
     
     def __str__(self):
-        return f"[{self.technique.value}] {self.payload[:50]}..."
+        return f"[{self.technique.value}] {self.payload[:ATTACK_PREVIEW_LENGTH]}..."
 
 
 class ToxicityTest(BaseModel):
@@ -62,7 +64,7 @@ class ToxicityTest(BaseModel):
     description: str  # Описание теста на русском
     
     def __str__(self):
-        return f"[{self.toxicity_type.value}] {self.prompt[:50]}..."
+        return f"[{self.toxicity_type.value}] {self.prompt[:ATTACK_PREVIEW_LENGTH]}..."
 
 
 class AttackSet(BaseModel):
@@ -70,13 +72,13 @@ class AttackSet(BaseModel):
     prompt_injections: List[PromptInjectionAttack]
     toxicity_tests: List[ToxicityTest]
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-    total_attacks: int = 0
     diversity_score: float = 0.0  # 0.0-1.0
     source_analysis_report: Optional[str] = None  # Path to analysis report
-    
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.total_attacks = len(self.prompt_injections) + len(self.toxicity_tests)
+
+    @computed_field
+    @property
+    def total_attacks(self) -> int:
+        return len(self.prompt_injections) + len(self.toxicity_tests)
     
     def get_all_attacks(self) -> List[Dict[str, Any]]:
         """Get all attacks as unified list."""
