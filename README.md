@@ -2,39 +2,6 @@
 
 AI Agent Security Testing Platform - автоматическое тестирование безопасности LLM-приложений.
 
-## 📋 Статус разработки
-
-**Phase 2: Agent-Breaker Development**
-
-### ✅ Week 2 - Day 1-2: Code Analyzer (COMPLETED)
-
-- ✅ Project structure created
-- ✅ LLM Client (LLM Studio integration)
-- ✅ File Reader (AST parsing)
-- ✅ Code Analyzer (vulnerability detection)
-- ✅ Data models (Pydantic)
-- ✅ CLI example
-- ✅ Tests
-- ✅ Консистентность 90.5%
-
-### ✅ Week 2 - Day 3-4: Attack Generator (COMPLETED)
-
-- ✅ Data models для атак
-- ✅ Attack Generator с LLM
-- ✅ Генерация Prompt Injection атак (25 шт)
-- ✅ Генерация Toxicity тестов (25 шт)
-- ✅ Diversity checker (similarity < 0.5)
-- ✅ CLI example
-- ✅ Все атаки на русском языке
-
-### 🔜 Upcoming
-
-- Day 5-6: Stress Tester (HTTP + Emulated режимы)
-- Day 7: Response Analyzer
-- Week 3: Streamlit UI
-
----
-
 ## 🎯 Что делает Code Analyzer
 
 Code Analyzer анализирует исходный код Python приложений на наличие уязвимостей, связанных с использованием LLM:
