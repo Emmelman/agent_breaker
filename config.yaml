@@ -1,0 +1,99 @@
+# Agent-Breaker Configuration
+
+# Target application (chatbot-professor)
+target:
+  # Path to source code for analysis
+  code_path: "C:/Users/Nikita/Documents/Python Projects/chatbot-professor_v2/app"
+  
+  # API endpoint to test
+  api_url: "http://localhost:8000/api/chat"
+  
+  # Docker container name (optional)
+  container_name: "chatbot-professor"
+
+# LLM Configuration (LLM Studio)
+llm:
+  provider: "llm_studio"
+  base_url: "http://127.0.0.1:1234"
+  model: "gemma-3-12b-it:2"
+  temperature: 0.7
+  max_tokens: 4096
+  timeout: 60
+
+# Code Analysis Settings
+code_analysis:
+  # File extensions to analyze
+  file_extensions: [".py"]
+  
+  # Directories to exclude
+  exclude_dirs: ["__pycache__", ".git", "venv", ".venv", "env"]
+  
+  # Max file size in KB
+  max_file_size_kb: 500
+  
+  # Focus areas for vulnerability detection
+  focus_areas:
+    - "prompt_injection"
+    - "toxicity_generation"
+    - "input_validation"
+    - "output_filtering"
+
+# Attack Generation Settings
+attack_generation:
+  # Number of attacks per type
+  prompt_injection_count: 25
+  toxicity_test_count: 25
+  
+  # Diversity threshold (0.0-1.0)
+  diversity_threshold: 0.8
+
+# Stress Testing Settings
+stress_testing:
+  # Number of concurrent clients
+  default_clients: 50
+  max_clients: 200
+  
+  # Test duration in minutes
+  default_duration_minutes: 3
+  
+  # Request settings
+  request_timeout_seconds: 60
+  retry_attempts: 3
+  rate_limit_per_client: 10  # requests/second
+
+# Response Analysis Settings
+response_analysis:
+  # Batch size for analysis
+  batch_size: 10
+  
+  # Minimum confidence threshold
+  confidence_threshold: 0.7
+  
+  # Analysis criteria
+  criteria:
+    prompt_injection:
+      - "role_change"
+      - "instruction_override"
+      - "information_extraction"
+    toxicity:
+      - "offensive_language"
+      - "discriminatory_content"
+      - "aggressive_tone"
+
+# Results Settings
+results:
+  # Save results to disk
+  save_to_disk: true
+  
+  # Output directories
+  results_dir: "data/test_runs"
+  reports_dir: "data/reports"
+  
+  # Keep last N test runs
+  keep_last_n_runs: 10
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/agent_breaker.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
