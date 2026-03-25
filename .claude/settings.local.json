@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python tests/test_refactoring.py)",
+      "Bash(cmd.exe /c \"py -3.12 --version\")",
+      "Bash(cmd.exe /c \"py -3.12 tests\\\\test_refactoring.py\")",
+      "Bash(/c/Users/Nikita/anaconda3/python.exe -c \"import sys; sys.path.insert\\(0, ''c:/Users/Nikita/Documents/Python Projects/agent-breaker-hybrid''\\); from models.test import HybridTestRun; print\\(HybridTestRun.model_fields[''overall_resistance_score''].default\\)\")"
+    ]
+  }
+}

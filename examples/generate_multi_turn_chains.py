@@ -8,7 +8,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from core.multi_turn_generator_old import MultiTurnChainGenerator
+from core.multi_turn_generator import MultiTurnChainGenerator
 from core.llm_client import LLMClient
 
 # LLM клиент
