@@ -221,3 +221,6 @@ class SessionReport(BaseModel):
     total_attacks: int
     total_successful: int
     overall_exploitation_rate: float
+    # Полные данные
+    all_attack_results: List[AttackResult] = Field(default_factory=list)
+    activity_log: List[Dict[str, str]] = Field(default_factory=list)

@@ -77,6 +77,15 @@ class AppState:
 
         # Контейнеры mitigations для реактивного обновления
         self._mit_containers: Dict[str, tuple] = {}
+        self.activity_log: List[Dict[str, str]] = []
+
+    def log(self, event: str, details: str = "") -> None:
+        """Добавить запись в activity log."""
+        self.activity_log.append({
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "event": event,
+            "details": details,
+        })
 
     def reset_results(self) -> None:
         """Сброс для нового запуска."""
@@ -87,6 +96,7 @@ class AppState:
         self.current_status = ""
         self.current_risk = ""
         self.should_stop = False
+        self.activity_log = []
 
 
 state = AppState()
@@ -449,16 +459,20 @@ def page_dashboard():
             ui.button("СТОП", on_click=lambda: setattr(state, "should_stop", True),
                       color="orange").classes("w-full")
 
-        # ═══ ПРАВАЯ ПАНЕЛЬ: Attack Log ═══
+        # ═══ ПРАВАЯ ПАНЕЛЬ: Attack Log + Activity Log ═══
         with ui.column().classes("flex-1 gap-2"):
-            ui.label("ATTACK LOG").classes("text-sm font-semibold text-gray-400")
+            with ui.tabs().classes("w-full") as tabs:
+                tab_attacks = ui.tab("Attack Log")
+                tab_activity = ui.tab("Activity Log")
+
             status_text = ui.label("").classes("text-sm text-gray-500")
 
-            log_container = ui.scroll_area().classes("w-full").style("height: 75vh")
-            log_column = ui.column().classes("w-full gap-1")
-
-            # Переносим log_column внутрь scroll_area
-            log_container.move(log_column)
+            with ui.tab_panels(tabs, value=tab_attacks).classes("w-full"):
+                # TAB 1: Attack Log
+                with ui.tab_panel(tab_attacks):
+                    log_container = ui.scroll_area().classes("w-full").style("height: 70vh")
+                    log_column = ui.column().classes("w-full gap-1")
+                    log_container.move(log_column)
 
             _last_count = {"value": 0}
 
@@ -516,6 +530,45 @@ def page_dashboard():
 
             ui.timer(0.5, _update_log)
 
+                # TAB 2: Activity Log
+                with ui.tab_panel(tab_activity):
+                    activity_container = ui.scroll_area().classes("w-full").style("height: 70vh")
+                    activity_column = ui.column().classes("w-full gap-0")
+                    activity_container.move(activity_column)
+
+                    _activity_count = {"value": 0}
+
+                    def _update_activity():
+                        current = len(state.activity_log)
+                        if current == _activity_count["value"]:
+                            return
+                        new_entries = state.activity_log[_activity_count["value"]:]
+                        _activity_count["value"] = current
+
+                        with activity_column:
+                            for entry in new_entries:
+                                color = "text-gray-300"
+                                ev = entry["event"]
+                                if "ОШИБКА" in ev:
+                                    color = "text-red-400"
+                                elif "РЕЗУЛЬТАТ" in ev or "ЗАВЕРШЕНО" in ev:
+                                    color = "text-green-400"
+                                elif "PLANNER" in ev or "OBS" in ev or "HYP" in ev or "DEC" in ev:
+                                    color = "text-amber-400"
+                                elif "REVIEW" in ev:
+                                    color = "text-cyan-400"
+                                elif "REFLECT" in ev or "MUTATE" in ev:
+                                    color = "text-purple-400"
+                                elif "HALL" in ev:
+                                    color = "text-blue-400"
+
+                                with ui.row().classes("w-full gap-2 py-0.5"):
+                                    ui.label(entry["time"]).classes("text-xs text-gray-500 font-mono w-16 shrink-0")
+                                    ui.label(ev).classes(f"text-xs font-bold {color} w-32 shrink-0")
+                                    ui.label(entry["details"]).classes("text-xs text-gray-400 break-all")
+
+                    ui.timer(0.5, _update_activity)
+
 
 # ═══════════════════════════════════════════════════
 #  СТРАНИЦА 3: ОТЧЁТ
@@ -561,9 +614,11 @@ def page_report():
             _render_risk_report(risk_id, rr)
 
         # --- Экспорт ---
-        with ui.row().classes("gap-4 mt-4"):
-            ui.button("Export JSON", on_click=lambda: _export_json(report), color="blue")
-            ui.button("Export Markdown", on_click=lambda: _export_markdown(report), color="green")
+        with ui.row().classes("gap-4 mt-4 flex-wrap"):
+            ui.button("Summary JSON", on_click=lambda: _export_json(report), color="blue")
+            ui.button("Summary MD", on_click=lambda: _export_markdown(report), color="green")
+            ui.button("Full Report MD", on_click=lambda: _export_full_report(report), color="orange")
+            ui.button("Full Report JSON", on_click=lambda: _export_full_json(report), color="red")
 
 
 def _render_risk_report(risk_id: str, result: RiskResult) -> None:
@@ -635,6 +690,8 @@ def _build_report() -> SessionReport:
         total_attacks=total_attacks,
         total_successful=total_successful,
         overall_exploitation_rate=total_successful / max(total_attacks, 1),
+        all_attack_results=state.all_results,
+        activity_log=state.activity_log,
     )
 
 
@@ -681,6 +738,116 @@ def _export_markdown(report: SessionReport) -> None:
     ui.notify(f"Markdown сохранён: {filepath.name}", type="positive")
 
 
+def _export_full_report(report: SessionReport) -> None:
+    """Полный детальный отчёт — каждая атака, каждое решение."""
+    out_dir = Path(__file__).parent.parent / "data" / "runs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filepath = out_dir / f"full_report_{report.session_id}.md"
+
+    lines = [
+        "# Agent-Breaker v2 — Полный отчёт", "",
+        f"**Session:** {report.session_id}",
+        f"**Target:** {report.target_url}",
+        f"**Дата:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"**Всего атак:** {report.total_attacks}",
+        f"**Успешных:** {report.total_successful}",
+        f"**Overall Rate:** {report.overall_exploitation_rate * 100:.1f}%", "", "---", "",
+    ]
+
+    # Summary по рискам
+    lines.extend(["## Summary", "", "| Риск | Статус | Rate | Атак | Успешных |", "|------|--------|------|------|----------|"])
+    for rid, rr in report.results.items():
+        lines.append(f"| {rid} | {rr.status.upper()} | {rr.exploitation_rate * 100:.1f}% | {rr.attacks_total} | {rr.attacks_successful} |")
+    lines.append("")
+
+    # Evolution
+    lines.append("## Evolution History")
+    lines.append("")
+    for c in report.evolution_history:
+        mi = {"single_turn": "ST", "multi_turn": "MT", "mixed": "MX"}.get(c.attack_mode, "?")
+        lines.append(f"### Gen {c.cycle_number} [{c.risk_id}] — {c.exploitation_rate * 100:.0f}% [{mi}] ({c.successful_attacks}/{c.total_attacks})")
+        lines.append("")
+        if c.planner_observation:
+            lines.append(f"**OBS:** {c.planner_observation}")
+        if c.planner_hypothesis:
+            lines.append(f"**HYP:** {c.planner_hypothesis}")
+        if c.planner_reasoning:
+            lines.append(f"**DEC:** {c.planner_reasoning}")
+        if c.escalation_reason:
+            lines.append(f"**ESCALATION:** {c.escalation_reason}")
+        if c.learnings:
+            lines.append(f"**Learnings:** {c.learnings[:500]}")
+        if c.review_suggestions:
+            lines.append(f"**Review:** approved={c.review_approved}, rejected={c.review_rejected}. {c.review_suggestions[:300]}")
+        lines.append("")
+
+    # Все атаки
+    lines.append("## Все атаки (детально)")
+    lines.append("")
+    by_risk: Dict[str, List] = {}
+    for r in report.all_attack_results:
+        by_risk.setdefault(r.risk_id, []).append(r)
+
+    for rid, results in by_risk.items():
+        succ = sum(1 for r in results if r.is_successful)
+        lines.extend([f"### {rid}", "", f"Всего: {len(results)}, успешных: {succ}", ""])
+        for i, r in enumerate(results, 1):
+            st = "SUCCESS" if r.is_successful else "FAILED"
+            lines.extend([
+                f"#### Атака #{i} (Gen {r.generation}) — {st} (confidence: {r.confidence:.2f})", "",
+                "**Payload:**", "```", r.payload, "```", "",
+                "**Response:**", "```", (r.response[:1000] if r.response else "(пусто)"), "```", "",
+            ])
+            if r.judge_reasoning:
+                lines.extend([f"**Judge:** {r.judge_reasoning}", ""])
+            lines.extend(["---", ""])
+
+    # Activity Log
+    if report.activity_log:
+        lines.extend(["## Activity Log", "", "```"])
+        for e in report.activity_log:
+            lines.append(f"{e['time']}  {e['event']:20s}  {e['details']}")
+        lines.append("```")
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    ui.notify(f"Full report: {filepath.name}", type="positive")
+
+
+def _export_full_json(report: SessionReport) -> None:
+    """Полный JSON со всеми атаками."""
+    out_dir = Path(__file__).parent.parent / "data" / "runs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filepath = out_dir / f"full_report_{report.session_id}.json"
+
+    full_data = {
+        "session_id": report.session_id,
+        "target_url": report.target_url,
+        "risks_tested": report.risks_tested,
+        "total_attacks": report.total_attacks,
+        "total_successful": report.total_successful,
+        "overall_exploitation_rate": report.overall_exploitation_rate,
+        "results_summary": {
+            rid: {"status": rr.status, "rate": rr.exploitation_rate,
+                  "total": rr.attacks_total, "successful": rr.attacks_successful}
+            for rid, rr in report.results.items()
+        },
+        "evolution_history": [c.model_dump() for c in report.evolution_history],
+        "all_attacks": [
+            {"id": r.attack_id, "risk_id": r.risk_id, "generation": r.generation,
+             "payload": r.payload, "response": r.response,
+             "is_successful": r.is_successful, "confidence": r.confidence,
+             "judge_reasoning": r.judge_reasoning, "response_time_ms": r.response_time_ms}
+            for r in report.all_attack_results
+        ],
+        "activity_log": report.activity_log,
+    }
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(full_data, f, ensure_ascii=False, indent=2)
+    ui.notify(f"Full JSON: {filepath.name}", type="positive")
+
+
 # ═══════════════════════════════════════════════════
 #  PIPELINE ТЕСТИРОВАНИЯ
 # ═══════════════════════════════════════════════════
@@ -700,6 +867,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
     try:
         # Multi-model factory — читает модели из config.yaml
         factory = LLMFactory()
+        state.log("🔧 INIT", f"Attacker: {factory.attacker.model}, Judge: {factory.judge.model}, Reviewer: {factory.reviewer.model}")
 
         kb = _load_kb()
         generator = AttackGenerator(factory.attacker, kb)
@@ -730,6 +898,8 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
 
             try:
+                state.log(f"🎯 НАЧАЛО", f"Риск: {risk_id}, атак: {attacks_count}, циклов: {max_cycles}")
+
                 # === HALL: специальный flow ===
                 if risk_id == "HALL" and hall_verifier and hall_verifier.document_count > 0:
                     await _run_hall_flow(hall_verifier, runner, risk_config, attacks_count)
@@ -760,6 +930,13 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             reasoning="Forced single-turn mode",
                         )
 
+                    state.log("🧠 PLANNER", f"Gen {cycle_num}: {decision.attack_mode} ({decision.single_turn_share}/{decision.multi_turn_share})")
+                    if decision.observation:
+                        state.log("   👁 OBS", decision.observation[:150])
+                    if decision.hypothesis:
+                        state.log("   🧪 HYP", decision.hypothesis[:150])
+                    state.log("   ⚡ DEC", decision.reasoning[:150])
+
                     state.current_status = (
                         f"[{risk_id}] Gen {cycle_num}: {decision.attack_mode} — {decision.reasoning[:80]}"
                     )
@@ -770,6 +947,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     # Single-turn часть
                     single_count = int(attacks_count * decision.single_turn_share / 100)
                     if single_count > 0:
+                        state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] {single_count} single-turn атак...")
                         state.current_status = f"[{risk_id}] Gen {cycle_num}: single-turn ({single_count})..."
                         await asyncio.sleep(0.05)
 
@@ -784,8 +962,15 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             if not attacks:
                                 attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
 
+                        state.log("✅ СГЕНЕРИРОВАНО", f"{len(attacks) if attacks else 0} атак")
+
                         if attacks:
+                            state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} атак в target...")
                             raw_results = await runner.run_batch(attacks, delay=0.5)
+                            avg_ms = sum(r.response_time_ms for r in raw_results) / max(len(raw_results), 1)
+                            state.log("📥 ПОЛУЧЕНО", f"{len(raw_results)} ответов, avg {avg_ms:.0f}ms")
+
+                            state.log("⚖️ SCORING", f"Judge ({factory.judge.model}) оценивает {len(raw_results)} ответов...")
                             scored_single = await _run_in_bg(scorer.score_batch, attacks, raw_results)
                             all_scored.extend(scored_single)
 
@@ -795,6 +980,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         multi_chains = 1
 
                     if multi_chains > 0:
+                        state.log("🔗 MULTI-TURN", f"[{risk_id}] {multi_chains} цепочек...")
                         state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
                         await asyncio.sleep(0.05)
 
@@ -813,6 +999,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     # Статистика цикла
                     successful = sum(1 for r in scored_results if r.is_successful)
+                    state.log("📊 РЕЗУЛЬТАТ", f"Gen {cycle_num}: {successful}/{len(scored_results)} успешных ({successful / max(len(scored_results), 1) * 100:.0f}%)")
                     rate = successful / max(len(scored_results), 1)
 
                     cycle = EvolutionCycle(
@@ -838,6 +1025,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     # Эволюция (если не последний цикл)
                     if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
+                        state.log("🔄 REFLECT", f"[{risk_id}] Анализ результатов Gen {cycle_num}...")
                         state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
                         await asyncio.sleep(0.05)
                         evo_cycle = await _run_in_bg(evolution.run_cycle, risk_config, attacks, scored_results)
@@ -848,9 +1036,11 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         evo_cycle.planner_confidence = decision.confidence
                         evo_cycle.escalation_reason = decision.escalation_reason
                         state.evolution_history[-1] = evo_cycle
+                        state.log("👥 REVIEW", f"Approved: {evo_cycle.review_approved}, rejected: {evo_cycle.review_rejected}")
 
             except Exception as e:
                 logger.exception("Ошибка при тестировании риска %s", risk_id)
+                state.log("❌ ОШИБКА", f"[{risk_id}]: {str(e)[:200]}")
                 state.current_status = f"ОШИБКА [{risk_id}]: {e}"
                 state.evolution_history.append(EvolutionCycle(
                     cycle_number=0, risk_id=risk_id,
@@ -864,6 +1054,8 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             state.progress = (risk_idx + 1) / total_risks
 
         state.progress = 1.0
+        total_succ = sum(1 for r in state.all_results if r.is_successful)
+        state.log("🏁 ЗАВЕРШЕНО", f"Всего: {len(state.all_results)} атак, {total_succ} успешных")
         state.current_status = "Тестирование завершено!"
         state.is_running = False
 
@@ -881,22 +1073,26 @@ async def _run_hall_flow(
 ) -> None:
     """Специальный flow для тестирования галлюцинаций."""
     risk_id = risk_config.risk_id
+    state.log("📚 HALL KB", f"Загружено {verifier.document_count} документов")
+    state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] HALL атаки из KB...")
     state.current_status = f"[{risk_id}] Генерация HALL атак из KB..."
     await asyncio.sleep(0.05)
 
-    # Генерация с учётом факторов
     if risk_config.selected_factors:
         attacks = await _run_in_bg(verifier.generate_hall_attacks_by_factors, risk_config, count=attacks_count)
     else:
         attacks = await _run_in_bg(verifier.generate_hall_attacks, count=attacks_count)
 
     if not attacks:
+        state.log("❌ ОШИБКА", f"[{risk_id}] Не удалось сгенерировать HALL атаки")
         state.current_status = f"[{risk_id}] Не удалось сгенерировать HALL атаки"
         return
 
+    state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} HALL атак в target...")
     state.current_status = f"[{risk_id}] Отправка {len(attacks)} HALL атак..."
     await asyncio.sleep(0.05)
     raw_results = await runner.run_batch(attacks, delay=0.5)
+    state.log("🔍 HALL VERIFY", f"Проверка {len(raw_results)} ответов по ground truth...")
 
     state.current_status = f"[{risk_id}] Верификация ответов через KB..."
     await asyncio.sleep(0.05)
