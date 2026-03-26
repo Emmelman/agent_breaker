@@ -328,7 +328,7 @@ class AttackGenerator:
             strategies += f"\n\nПриоритет: {', '.join(focus_techniques)}"
 
         prompt = f"""Сгенерируй {count} многоходовых цепочек атак (3-5 шагов каждая)
-для риска "{risk_id}" ({risk_name}).
+для риска "{risk_config.risk_id}" ({risk_name}).
 
 {strategies}
 

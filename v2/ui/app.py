@@ -469,16 +469,18 @@ def page_dashboard():
                     return
                 # Рендерим только новые
                 new_results = state.all_results[_last_count["value"]:]
+                start_idx = _last_count["value"]
                 _last_count["value"] = current
                 status_text.set_text(state.current_status)
 
                 with log_column:
-                    for r in new_results:
+                    for i, r in enumerate(new_results):
+                        idx = start_idx + i + 1
                         border = "border-green-500" if r.is_successful else "border-red-500"
                         icon = "+" if r.is_successful else "-"
                         with ui.card().classes(f"w-full border-l-4 {border} p-2"):
                             with ui.row().classes("items-center gap-2"):
-                                ui.label(f"#{current}").classes("text-xs text-gray-500")
+                                ui.label(f"#{idx}").classes("text-xs text-gray-500")
                                 ui.label(f"Gen {r.generation}").classes("text-xs text-gray-400")
                                 ui.label(r.risk_id).classes("text-xs font-bold")
                                 badge_cls = "text-green-400" if r.is_successful else "text-red-400"
@@ -665,20 +667,8 @@ def _export_markdown(report: SessionReport) -> None:
 
 async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
     try:
-        # Multi-model factory
-        factory = LLMFactory(config={
-            "llm": {
-                "base_url": state.llm_base_url,
-                "timeout": 120,
-                "max_retries": 3,
-                "models": {
-                    "attacker": {"model": state.llm_model, "temperature": 0.7, "max_tokens": 2048},
-                    "judge": {"model": state.llm_model, "temperature": 0.1, "max_tokens": 1024},
-                    "reviewer": {"model": state.llm_model, "temperature": 0.3, "max_tokens": 1024},
-                },
-                "fallback_model": state.llm_model,
-            }
-        })
+        # Multi-model factory — читает модели из config.yaml
+        factory = LLMFactory()
 
         kb = _load_kb()
         generator = AttackGenerator(factory.attacker, kb)
@@ -720,6 +710,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                 continue
 
             # === Обычный flow с Planner ===
+            attacks: List[Attack] = []
             scored_results: List[AttackResult] = []
 
             for cycle_num in range(1, max_cycles + 1):
@@ -819,7 +810,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                 )
 
                 # Эволюция (если не последний цикл)
-                if cycle_num < max_cycles and state.evolution_enabled and scored_results:
+                if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
                     state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
                     await asyncio.sleep(0.05)
                     evo_cycle = evolution.run_cycle(risk_config, attacks, scored_results)
