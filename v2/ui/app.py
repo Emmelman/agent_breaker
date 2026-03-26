@@ -342,9 +342,8 @@ def page_dashboard():
     _nav_header("Dashboard")
 
     with ui.row().classes("w-full max-w-7xl mx-auto p-4 gap-4"):
-        # ═══ ЛЕВАЯ ПАНЕЛЬ: session info + metrics ═══
+        # ═══ ЛЕВАЯ ПАНЕЛЬ ═══
         with ui.column().classes("w-80 gap-4"):
-            # Session info
             with ui.card().classes("w-full"):
                 ui.label("SESSION").classes("text-sm font-semibold text-gray-400")
                 session_id_label = ui.label("—")
@@ -363,7 +362,6 @@ def page_dashboard():
 
                 ui.timer(0.5, _update_session)
 
-            # Metrics
             with ui.card().classes("w-full"):
                 ui.label("METRICS").classes("text-sm font-semibold text-gray-400")
                 with ui.row().classes("gap-2 w-full"):
@@ -393,7 +391,6 @@ def page_dashboard():
 
                 ui.timer(0.5, _update_metrics)
 
-            # Evolution graph + details
             with ui.card().classes("w-full"):
                 ui.label("EVOLUTION").classes("text-sm font-semibold text-gray-400")
                 evo_chart = ui.echart({
@@ -405,13 +402,11 @@ def page_dashboard():
                 }).classes("w-full h-48")
 
                 evo_details = ui.column().classes("w-full gap-1")
-
                 _evo_count = {"value": 0}
 
                 def _update_evo():
                     if not state.evolution_history:
                         return
-                    # График
                     by_risk: Dict[str, List[float]] = {}
                     for c in state.evolution_history:
                         by_risk.setdefault(c.risk_id, []).append(round(c.exploitation_rate * 100, 1))
@@ -423,7 +418,6 @@ def page_dashboard():
                     ]
                     evo_chart.update()
 
-                    # Детали — только новые
                     current = len(state.evolution_history)
                     if current == _evo_count["value"]:
                         return
@@ -435,10 +429,7 @@ def page_dashboard():
                             mode_icons = {"single_turn": "ST", "multi_turn": "MT", "mixed": "MX"}
                             mode = mode_icons.get(cycle.attack_mode, "?")
                             esc = " ESC" if cycle.escalation_reason else ""
-                            header = (
-                                f"Gen {cycle.cycle_number}: {cycle.exploitation_rate:.0%} "
-                                f"[{mode}]{esc}"
-                            )
+                            header = f"Gen {cycle.cycle_number}: {cycle.exploitation_rate:.0%} [{mode}]{esc}"
                             with ui.expansion(header).classes("w-full"):
                                 if cycle.planner_observation:
                                     ui.label(f"OBS: {cycle.planner_observation}").classes("text-xs text-blue-400")
@@ -455,30 +446,32 @@ def page_dashboard():
 
                 ui.timer(2.0, _update_evo)
 
-            # СТОП
-            ui.button("СТОП", on_click=lambda: setattr(state, "should_stop", True),
-                      color="orange").classes("w-full")
+            def _on_stop():
+                state.should_stop = True
+                state.log("⛔ СТОП", "Запрошена остановка пользователем")
+                ui.notify("Остановка запрошена. Ожидайте завершения текущей операции...", type="warning")
 
-        # ═══ ПРАВАЯ ПАНЕЛЬ: Attack Log + Activity Log ═══
+            ui.button("СТОП", on_click=_on_stop, color="orange").classes("w-full")
+
+        # ═══ ПРАВАЯ ПАНЕЛЬ: ATTACK LOG + ACTIVITY LOG ═══
         with ui.column().classes("flex-1 gap-2"):
             with ui.tabs().classes("w-full") as tabs:
-                tab_attacks = ui.tab("Attack Log")
-                tab_activity = ui.tab("Activity Log")
+                tab_attacks = ui.tab("ATTACK LOG")
+                tab_activity = ui.tab("ACTIVITY LOG")
 
             status_text = ui.label("").classes("text-sm text-gray-500")
 
             with ui.tab_panels(tabs, value=tab_attacks).classes("w-full"):
                 with ui.tab_panel(tab_attacks):
-                    log_container = ui.scroll_area().classes("w-full").style("height: 70vh")
-                    log_column = ui.column().classes("w-full gap-1")
-                    log_container.move(log_column)
+                    with ui.scroll_area().classes("w-full").style("height: 72vh"):
+                        log_column = ui.column().classes("w-full gap-1")
 
                 with ui.tab_panel(tab_activity):
-                    activity_container = ui.scroll_area().classes("w-full").style("height: 70vh")
-                    activity_column = ui.column().classes("w-full gap-0")
-                    activity_container.move(activity_column)
+                    with ui.scroll_area().classes("w-full").style("height: 72vh"):
+                        activity_column = ui.column().classes("w-full gap-0")
 
-            # Функции и таймеры — СНАРУЖИ tab_panels
+            # ── Функции и таймеры — СНАРУЖИ tab_panels ──
+
             _last_count = {"value": 0}
 
             def _update_log():
@@ -505,8 +498,8 @@ def page_dashboard():
                                 ui.label(r.risk_id).classes("text-xs font-bold text-white")
                                 ui.label(f"{icon} {r.confidence:.2f}").classes(f"text-sm font-bold {badge_cls}")
 
-                            p_prev = r.payload[:120] + ("..." if len(r.payload) > 120 else "")
-                            ui.label(f"📤 {p_prev}").classes("text-xs text-gray-300 mt-1")
+                            p_text = r.payload[:120] + ("..." if len(r.payload) > 120 else "")
+                            ui.label(f"📤 {p_text}").classes("text-xs text-gray-300 mt-1")
 
                             if r.response:
                                 if r.response.startswith("ERROR:") or r.response.startswith("HTTP_ERROR_"):
@@ -540,9 +533,9 @@ def page_dashboard():
 
                 with activity_column:
                     for entry in new_entries:
-                        color = "text-gray-300"
                         ev = entry["event"]
-                        if "ОШИБКА" in ev:
+                        color = "text-gray-300"
+                        if "ОШИБКА" in ev or "СТОП" in ev:
                             color = "text-red-400"
                         elif "РЕЗУЛЬТАТ" in ev or "ЗАВЕРШЕНО" in ev:
                             color = "text-green-400"
@@ -557,8 +550,8 @@ def page_dashboard():
 
                         with ui.row().classes("w-full gap-2 py-0.5"):
                             ui.label(entry["time"]).classes("text-xs text-gray-500 font-mono w-16 shrink-0")
-                            ui.label(ev).classes(f"text-xs font-bold {color} w-32 shrink-0")
-                            ui.label(entry["details"]).classes("text-xs text-gray-400 break-all")
+                            ui.label(ev).classes(f"text-xs font-bold {color} w-40 shrink-0")
+                            ui.label(entry.get("details", "")).classes("text-xs text-gray-400 break-all")
 
             ui.timer(0.5, _update_log)
             ui.timer(0.5, _update_activity)
