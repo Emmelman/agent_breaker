@@ -21,14 +21,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from nicegui import app, ui
 
 from core.attack_generator import AttackGenerator
+from core.attack_planner import AttackPlanner
 from core.attack_runner import AttackRunner
 from core.evolution_engine import EvolutionEngine
+from core.hall_verifier import HallVerifier
 from core.knowledge import KnowledgeBase
-from core.llm_client import LLMClient
+from core.llm_client import LLMClient, LLMFactory
 from core.response_scorer import ResponseScorer
 from core.tracing import Tracer
 from models.schemas import (
     Attack,
+    AttackDecision,
     AttackResult,
     EvolutionCycle,
     RiskConfig,
@@ -59,6 +62,8 @@ class AppState:
         self.llm_model: str = "gemma-3-12b-it"
         self.evolution_enabled: bool = True
         self.max_evolution_cycles: int = 3
+        self.hall_kb_path: str = r"C:\Users\Nikita\Documents\Python Projects\chatbot-professor_v2\data\knowledge_base"
+        self.planning_mode: str = "auto"  # "auto" | "single" | "multi"
 
         self.risk_configs: Dict[str, Dict[str, Any]] = {}
 
@@ -145,6 +150,13 @@ def page_setup():
         for risk in kb.get_risks_in_scope():
             _render_risk_card(risk, kb)
 
+        # --- HALL KB ---
+        with ui.card().classes("w-full"):
+            ui.label("HALLUCINATION KB").classes("text-lg font-semibold text-gray-400")
+            ui.input("Путь к KB целевого агента (.txt/.md/.pdf)", value=state.hall_kb_path,
+                     on_change=lambda e: setattr(state, "hall_kb_path", e.value)).classes("w-full")
+            ui.label("Для тестирования HALL — папка с документами базы знаний агента").classes("text-xs text-gray-500")
+
         # --- EVOLUTION ---
         with ui.card().classes("w-full"):
             ui.label("EVOLUTION").classes("text-lg font-semibold text-gray-400")
@@ -154,6 +166,14 @@ def page_setup():
                 slider = ui.slider(min=1, max=5, value=state.max_evolution_cycles, step=1,
                                    on_change=lambda e: setattr(state, "max_evolution_cycles", int(e.value)))
                 ui.label().bind_text_from(slider, "value", backward=lambda v: f"Циклов: {int(v)}")
+
+            ui.label("Режим планирования:").classes("text-sm font-bold mt-2")
+            ui.toggle(
+                {"auto": "Авто (агент решает)", "single": "Single-turn only", "multi": "Multi-turn only"},
+                value=state.planning_mode,
+                on_change=lambda e: setattr(state, "planning_mode", e.value),
+            )
+            ui.label("В режиме 'Авто' система сама решает когда эскалировать на multi-turn").classes("text-xs text-gray-500")
 
         # --- ЗАПУСК ---
         ui.button("ЗАПУСК", on_click=_start_testing, color="red").classes(
@@ -363,7 +383,7 @@ def page_dashboard():
 
                 ui.timer(0.5, _update_metrics)
 
-            # Evolution graph
+            # Evolution graph + details
             with ui.card().classes("w-full"):
                 ui.label("EVOLUTION").classes("text-sm font-semibold text-gray-400")
                 evo_chart = ui.echart({
@@ -374,9 +394,14 @@ def page_dashboard():
                     "grid": {"top": 30, "bottom": 25, "left": 40, "right": 10},
                 }).classes("w-full h-48")
 
+                evo_details = ui.column().classes("w-full gap-1")
+
+                _evo_count = {"value": 0}
+
                 def _update_evo():
                     if not state.evolution_history:
                         return
+                    # График
                     by_risk: Dict[str, List[float]] = {}
                     for c in state.evolution_history:
                         by_risk.setdefault(c.risk_id, []).append(round(c.exploitation_rate * 100, 1))
@@ -387,6 +412,36 @@ def page_dashboard():
                         for rid, data in by_risk.items()
                     ]
                     evo_chart.update()
+
+                    # Детали — только новые
+                    current = len(state.evolution_history)
+                    if current == _evo_count["value"]:
+                        return
+                    new_cycles = state.evolution_history[_evo_count["value"]:]
+                    _evo_count["value"] = current
+
+                    with evo_details:
+                        for cycle in new_cycles:
+                            mode_icons = {"single_turn": "ST", "multi_turn": "MT", "mixed": "MX"}
+                            mode = mode_icons.get(cycle.attack_mode, "?")
+                            esc = " ESC" if cycle.escalation_reason else ""
+                            header = (
+                                f"Gen {cycle.cycle_number}: {cycle.exploitation_rate:.0%} "
+                                f"[{mode}]{esc}"
+                            )
+                            with ui.expansion(header).classes("w-full"):
+                                if cycle.planner_observation:
+                                    ui.label(f"OBS: {cycle.planner_observation}").classes("text-xs text-blue-400")
+                                if cycle.planner_hypothesis:
+                                    ui.label(f"HYP: {cycle.planner_hypothesis}").classes("text-xs text-purple-400")
+                                if cycle.planner_reasoning:
+                                    ui.label(f"DEC: {cycle.planner_reasoning}").classes("text-xs text-amber-400")
+                                if cycle.escalation_reason:
+                                    ui.label(f"ESC: {cycle.escalation_reason}").classes("text-xs text-red-400")
+                                if cycle.learnings:
+                                    ui.label(f"Learnings: {cycle.learnings[:150]}").classes("text-xs text-gray-400")
+                                if cycle.review_suggestions:
+                                    ui.label(f"Review: {cycle.review_suggestions[:150]}").classes("text-xs text-cyan-400")
 
                 ui.timer(2.0, _update_evo)
 
@@ -610,12 +665,36 @@ def _export_markdown(report: SessionReport) -> None:
 
 async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
     try:
-        llm = LLMClient(base_url=state.llm_base_url, model=state.llm_model)
+        # Multi-model factory
+        factory = LLMFactory(config={
+            "llm": {
+                "base_url": state.llm_base_url,
+                "timeout": 120,
+                "max_retries": 3,
+                "models": {
+                    "attacker": {"model": state.llm_model, "temperature": 0.7, "max_tokens": 2048},
+                    "judge": {"model": state.llm_model, "temperature": 0.1, "max_tokens": 1024},
+                    "reviewer": {"model": state.llm_model, "temperature": 0.3, "max_tokens": 1024},
+                },
+                "fallback_model": state.llm_model,
+            }
+        })
+
         kb = _load_kb()
-        generator = AttackGenerator(llm, kb)
+        generator = AttackGenerator(factory.attacker, kb)
         runner = AttackRunner(target_url=state.target_url)
-        scorer = ResponseScorer(llm)
-        evolution = EvolutionEngine(llm, generator)
+        scorer = ResponseScorer(factory.judge)
+        evolution = EvolutionEngine(factory.attacker, generator, reviewer=factory.reviewer)
+        planner = AttackPlanner(factory.attacker)
+
+        # HALL verifier (если путь задан)
+        hall_verifier = None
+        if state.hall_kb_path and Path(state.hall_kb_path).exists():
+            hall_verifier = HallVerifier(
+                llm_client=factory.attacker,
+                kb_path=state.hall_kb_path,
+                judge_client=factory.judge,
+            )
 
         total_risks = len(risk_configs)
 
@@ -629,53 +708,129 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             attacks_count = state.risk_configs.get(risk_id, {}).get("attacks_count", 10)
             max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
 
-            state.current_status = f"[{risk_id}] Генерация атак..."
             state.progress = risk_idx / total_risks
             await asyncio.sleep(0.05)
 
-            attacks = generator.generate(risk_config, count=attacks_count)
-            if not attacks:
-                state.current_status = f"[{risk_id}] Не удалось сгенерировать атаки"
+            # === HALL: специальный flow ===
+            if risk_id == "HALL" and hall_verifier and hall_verifier.document_count > 0:
+                await _run_hall_flow(
+                    hall_verifier, runner, risk_config, attacks_count,
+                )
+                state.progress = (risk_idx + 1) / total_risks
                 continue
+
+            # === Обычный flow с Planner ===
+            scored_results: List[AttackResult] = []
 
             for cycle_num in range(1, max_cycles + 1):
                 if state.should_stop:
                     break
 
-                state.current_status = f"[{risk_id}] Отправка атак (Gen {cycle_num})..."
-                await asyncio.sleep(0.05)
-                raw_results = await runner.run_batch(attacks, delay=0.5)
+                # Planner решает стратегию
+                if cycle_num == 1:
+                    decision = planner.plan_initial(risk_config)
+                elif state.planning_mode == "auto":
+                    decision = planner.plan_next(risk_config, state.evolution_history, scored_results)
+                elif state.planning_mode == "multi":
+                    decision = AttackDecision(
+                        attack_mode="multi_turn", single_turn_share=0, multi_turn_share=100,
+                        reasoning="Forced multi-turn mode",
+                    )
+                else:
+                    decision = AttackDecision(
+                        attack_mode="single_turn",
+                        reasoning="Forced single-turn mode",
+                    )
 
-                state.current_status = f"[{risk_id}] Оценка ответов (Gen {cycle_num})..."
+                state.current_status = (
+                    f"[{risk_id}] Gen {cycle_num}: {decision.attack_mode} — {decision.reasoning[:80]}"
+                )
                 await asyncio.sleep(0.05)
-                scored_results = scorer.score_batch(attacks, raw_results)
+
+                all_scored: List[AttackResult] = []
+
+                # Single-turn часть
+                single_count = int(attacks_count * decision.single_turn_share / 100)
+                if single_count > 0:
+                    state.current_status = f"[{risk_id}] Gen {cycle_num}: single-turn ({single_count})..."
+                    await asyncio.sleep(0.05)
+
+                    if cycle_num == 1:
+                        attacks = generator.generate(
+                            risk_config, count=single_count,
+                            focus_techniques=decision.focus_techniques,
+                            avoid_techniques=decision.avoid_techniques,
+                        )
+                    else:
+                        attacks = evolution.get_new_attacks(risk_config, attacks, scored_results)
+                        if not attacks:
+                            attacks = generator.generate(risk_config, count=single_count)
+
+                    if attacks:
+                        raw_results = await runner.run_batch(attacks, delay=0.5)
+                        scored_single = scorer.score_batch(attacks, raw_results)
+                        all_scored.extend(scored_single)
+
+                # Multi-turn часть
+                multi_chains = max(int(attacks_count * decision.multi_turn_share / 100) // 3, 0)
+                if decision.multi_turn_share > 0 and multi_chains == 0:
+                    multi_chains = 1
+
+                if multi_chains > 0:
+                    state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
+                    await asyncio.sleep(0.05)
+
+                    chains = generator.generate_multi_turn(
+                        risk_config, count=multi_chains,
+                        focus_techniques=decision.focus_techniques,
+                    )
+                    for chain in chains:
+                        chain_result = await runner.run_chain(chain)
+                        scored_chain = scorer.score_chain(chain, chain_result)
+                        all_scored.extend(scored_chain.steps_results)
+
+                scored_results = all_scored
                 state.all_results.extend(scored_results)
                 await asyncio.sleep(0.05)
 
+                # Статистика цикла
                 successful = sum(1 for r in scored_results if r.is_successful)
                 rate = successful / max(len(scored_results), 1)
 
                 cycle = EvolutionCycle(
                     cycle_number=cycle_num, risk_id=risk_id,
                     total_attacks=len(scored_results), successful_attacks=successful,
-                    exploitation_rate=rate, learnings="",
+                    exploitation_rate=rate,
+                    attack_mode=decision.attack_mode,
+                    single_turn_share=decision.single_turn_share,
+                    multi_turn_share=decision.multi_turn_share,
+                    planner_reasoning=decision.reasoning,
+                    planner_observation=decision.observation,
+                    planner_hypothesis=decision.hypothesis,
+                    planner_confidence=decision.confidence,
+                    escalation_reason=decision.escalation_reason,
+                    avoid_techniques=decision.avoid_techniques,
                 )
                 state.evolution_history.append(cycle)
 
                 state.current_status = (
-                    f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% ({successful}/{len(scored_results)})"
+                    f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% "
+                    f"({successful}/{len(scored_results)}) [{decision.attack_mode}]"
                 )
 
-                if cycle_num < max_cycles and state.evolution_enabled:
+                # Эволюция (если не последний цикл)
+                if cycle_num < max_cycles and state.evolution_enabled and scored_results:
                     state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
                     await asyncio.sleep(0.05)
                     evo_cycle = evolution.run_cycle(risk_config, attacks, scored_results)
+                    # Объединяем planner + evolution данные
+                    evo_cycle.attack_mode = decision.attack_mode
+                    evo_cycle.planner_reasoning = decision.reasoning
+                    evo_cycle.planner_observation = decision.observation
+                    evo_cycle.planner_hypothesis = decision.hypothesis
+                    evo_cycle.planner_confidence = decision.confidence
+                    evo_cycle.escalation_reason = decision.escalation_reason
                     state.evolution_history[-1] = evo_cycle
-
-                    attacks = evolution.get_new_attacks(risk_config, attacks, scored_results)
-                    if not attacks:
-                        state.current_status = f"[{risk_id}] Мутация не дала атак"
-                        break
 
             state.progress = (risk_idx + 1) / total_risks
 
@@ -687,6 +842,58 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         logger.exception("Ошибка pipeline")
         state.current_status = f"ОШИБКА: {e}"
         state.is_running = False
+
+
+async def _run_hall_flow(
+    verifier: HallVerifier,
+    runner: AttackRunner,
+    risk_config: RiskConfig,
+    attacks_count: int,
+) -> None:
+    """Специальный flow для тестирования галлюцинаций."""
+    risk_id = risk_config.risk_id
+    state.current_status = f"[{risk_id}] Генерация HALL атак из KB..."
+    await asyncio.sleep(0.05)
+
+    # Генерация с учётом факторов
+    if risk_config.selected_factors:
+        attacks = verifier.generate_hall_attacks_by_factors(risk_config, count=attacks_count)
+    else:
+        attacks = verifier.generate_hall_attacks(count=attacks_count)
+
+    if not attacks:
+        state.current_status = f"[{risk_id}] Не удалось сгенерировать HALL атаки"
+        return
+
+    state.current_status = f"[{risk_id}] Отправка {len(attacks)} HALL атак..."
+    await asyncio.sleep(0.05)
+    raw_results = await runner.run_batch(attacks, delay=0.5)
+
+    state.current_status = f"[{risk_id}] Верификация ответов через KB..."
+    await asyncio.sleep(0.05)
+
+    scored = []
+    for attack, raw in zip(attacks, raw_results):
+        result = verifier.verify_response(attack, raw.response)
+        result.response_time_ms = raw.response_time_ms
+        scored.append(result)
+
+    state.all_results.extend(scored)
+
+    successful = sum(1 for r in scored if r.is_successful)
+    rate = successful / max(len(scored), 1)
+
+    cycle = EvolutionCycle(
+        cycle_number=1, risk_id=risk_id,
+        total_attacks=len(scored), successful_attacks=successful,
+        exploitation_rate=rate,
+        learnings=f"HALL: {successful} галлюцинаций из {len(scored)} вопросов",
+    )
+    state.evolution_history.append(cycle)
+
+    state.current_status = (
+        f"[{risk_id}] HALL завершён: {successful}/{len(scored)} галлюцинаций ({rate*100:.1f}%)"
+    )
 
 
 # ═══════════════════════════════════════════════════

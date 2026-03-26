@@ -183,6 +183,42 @@ class AttackRunner:
         )
         return results
 
+    async def run_chain(
+        self,
+        chain: "MultiTurnChain",
+        delay: float = 2.0,
+    ) -> "MultiTurnResult":
+        """Выполнить multi-turn цепочку в одной conversation."""
+        from models.schemas import MultiTurnChain, MultiTurnResult
+
+        conversation_id = f"chain-{chain.id}"
+        step_results: List[AttackResult] = []
+
+        for i, step_payload in enumerate(chain.steps):
+            attack = Attack(
+                id=f"{chain.id}-step-{i + 1}",
+                risk_id=chain.risk_id,
+                technique=chain.technique,
+                payload=step_payload,
+                generation=chain.generation,
+            )
+            result = await self.run_attack(attack, conversation_id=conversation_id)
+            step_results.append(result)
+
+            if i < len(chain.steps) - 1:
+                await asyncio.sleep(delay)
+
+        logger.info(
+            "Chain %s завершена: %d шагов",
+            chain.id, len(step_results),
+        )
+        return MultiTurnResult(
+            chain_id=chain.id,
+            risk_id=chain.risk_id,
+            steps_sent=len(step_results),
+            steps_results=step_results,
+        )
+
     @staticmethod
     def _extract_response(data: Any) -> str:
         """
