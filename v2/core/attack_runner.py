@@ -42,7 +42,7 @@ class AttackRunner:
             ) as session:
                 async with session.post(
                     self._target_url,
-                    json={"message": "ping"},
+                    json={"message": "ping", "user_id": "agent-breaker-check"},
                 ) as resp:
                     data = await resp.json()
                     response_text = self._extract_response(data)
@@ -72,7 +72,10 @@ class AttackRunner:
         Returns:
             AttackResult с сырым ответом (без скоринга).
         """
-        body: Dict[str, Any] = {"message": attack.payload}
+        body: Dict[str, Any] = {
+            "message": attack.payload,
+            "user_id": f"agent-breaker-{attack.risk_id.lower()}",
+        }
         if conversation_id:
             body["conversation_id"] = conversation_id
 
