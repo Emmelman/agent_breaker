@@ -163,6 +163,7 @@ class AttackRunner:
         attacks: List[Attack],
         delay: float = _DEFAULT_DELAY,
         conversation_id: Optional[str] = None,
+        stop_check: Optional[Any] = None,
     ) -> List[AttackResult]:
         """
         Отправить пакет атак с задержкой между ними.
@@ -171,6 +172,7 @@ class AttackRunner:
             attacks: Список атак.
             delay: Задержка между атаками в секундах.
             conversation_id: ID диалога (общий для всех).
+            stop_check: Callable → True для остановки.
 
         Returns:
             Список результатов.
@@ -178,6 +180,10 @@ class AttackRunner:
         results: List[AttackResult] = []
 
         for i, attack in enumerate(attacks):
+            if stop_check and stop_check():
+                logger.info("Batch прерван на атаке %d/%d", i + 1, len(attacks))
+                break
+
             result = await self.run_attack(attack, conversation_id=conversation_id)
             results.append(result)
 

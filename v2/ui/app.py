@@ -468,12 +468,17 @@ def page_dashboard():
             status_text = ui.label("").classes("text-sm text-gray-500")
 
             with ui.tab_panels(tabs, value=tab_attacks).classes("w-full"):
-                # TAB 1: Attack Log
                 with ui.tab_panel(tab_attacks):
                     log_container = ui.scroll_area().classes("w-full").style("height: 70vh")
                     log_column = ui.column().classes("w-full gap-1")
                     log_container.move(log_column)
 
+                with ui.tab_panel(tab_activity):
+                    activity_container = ui.scroll_area().classes("w-full").style("height: 70vh")
+                    activity_column = ui.column().classes("w-full gap-0")
+                    activity_container.move(activity_column)
+
+            # Функции и таймеры — СНАРУЖИ tab_panels
             _last_count = {"value": 0}
 
             def _update_log():
@@ -481,7 +486,6 @@ def page_dashboard():
                 if current == _last_count["value"]:
                     status_text.set_text(state.current_status)
                     return
-                # Рендерим только новые
                 new_results = state.all_results[_last_count["value"]:]
                 start_idx = _last_count["value"]
                 _last_count["value"] = current
@@ -501,26 +505,23 @@ def page_dashboard():
                                 ui.label(r.risk_id).classes("text-xs font-bold text-white")
                                 ui.label(f"{icon} {r.confidence:.2f}").classes(f"text-sm font-bold {badge_cls}")
 
-                            # Payload — всегда виден
-                            p_prev = r.payload[:150] + ("..." if len(r.payload) > 150 else "")
-                            ui.label(p_prev).classes("text-xs text-gray-300 mt-1")
+                            p_prev = r.payload[:120] + ("..." if len(r.payload) > 120 else "")
+                            ui.label(f"📤 {p_prev}").classes("text-xs text-gray-300 mt-1")
 
-                            # Response — всегда виден
-                            if r.response and not r.response.startswith("ERROR"):
-                                resp_prev = r.response[:150] + ("..." if len(r.response) > 150 else "")
-                                ui.label(resp_prev).classes("text-xs text-blue-300")
-                            elif r.response:
-                                ui.label(r.response[:100]).classes("text-xs text-red-300")
+                            if r.response:
+                                if r.response.startswith("ERROR:") or r.response.startswith("HTTP_ERROR_"):
+                                    ui.label(f"📥 {r.response[:100]}").classes("text-xs text-red-300")
+                                else:
+                                    resp_text = r.response[:120] + ("..." if len(r.response) > 120 else "")
+                                    ui.label(f"📥 {resp_text}").classes("text-xs text-blue-300")
                             else:
-                                ui.label("(пустой ответ)").classes("text-xs text-gray-500 italic")
+                                ui.label("📥 (пустой ответ)").classes("text-xs text-gray-500 italic")
 
-                            # Judge reasoning
                             if r.judge_reasoning:
-                                j_prev = r.judge_reasoning[:150] + ("..." if len(r.judge_reasoning) > 150 else "")
-                                ui.label(j_prev).classes("text-xs text-gray-400")
+                                j_text = r.judge_reasoning[:120] + ("..." if len(r.judge_reasoning) > 120 else "")
+                                ui.label(f"⚖️ {j_text}").classes("text-xs text-gray-400")
 
-                            # Полный текст
-                            with ui.expansion("Полный текст").classes("w-full"):
+                            with ui.expansion("Детали").classes("w-full"):
                                 ui.label(f"Payload: {r.payload}").classes("text-xs break-all")
                                 ui.separator()
                                 ui.label(f"Response: {r.response}").classes("text-xs text-gray-300 break-all")
@@ -528,46 +529,39 @@ def page_dashboard():
                                     ui.separator()
                                     ui.label(f"Judge: {r.judge_reasoning}").classes("text-xs text-gray-400 break-all")
 
-                    ui.timer(0.5, _update_log)
+            _activity_count = {"value": 0}
 
-                # TAB 2: Activity Log
-                with ui.tab_panel(tab_activity):
-                    activity_container = ui.scroll_area().classes("w-full").style("height: 70vh")
-                    activity_column = ui.column().classes("w-full gap-0")
-                    activity_container.move(activity_column)
+            def _update_activity():
+                current = len(state.activity_log)
+                if current == _activity_count["value"]:
+                    return
+                new_entries = state.activity_log[_activity_count["value"]:]
+                _activity_count["value"] = current
 
-                    _activity_count = {"value": 0}
+                with activity_column:
+                    for entry in new_entries:
+                        color = "text-gray-300"
+                        ev = entry["event"]
+                        if "ОШИБКА" in ev:
+                            color = "text-red-400"
+                        elif "РЕЗУЛЬТАТ" in ev or "ЗАВЕРШЕНО" in ev:
+                            color = "text-green-400"
+                        elif "PLANNER" in ev or "OBS" in ev or "HYP" in ev or "DEC" in ev:
+                            color = "text-amber-400"
+                        elif "REVIEW" in ev:
+                            color = "text-cyan-400"
+                        elif "REFLECT" in ev or "MUTATE" in ev:
+                            color = "text-purple-400"
+                        elif "HALL" in ev:
+                            color = "text-blue-400"
 
-                    def _update_activity():
-                        current = len(state.activity_log)
-                        if current == _activity_count["value"]:
-                            return
-                        new_entries = state.activity_log[_activity_count["value"]:]
-                        _activity_count["value"] = current
+                        with ui.row().classes("w-full gap-2 py-0.5"):
+                            ui.label(entry["time"]).classes("text-xs text-gray-500 font-mono w-16 shrink-0")
+                            ui.label(ev).classes(f"text-xs font-bold {color} w-32 shrink-0")
+                            ui.label(entry["details"]).classes("text-xs text-gray-400 break-all")
 
-                        with activity_column:
-                            for entry in new_entries:
-                                color = "text-gray-300"
-                                ev = entry["event"]
-                                if "ОШИБКА" in ev:
-                                    color = "text-red-400"
-                                elif "РЕЗУЛЬТАТ" in ev or "ЗАВЕРШЕНО" in ev:
-                                    color = "text-green-400"
-                                elif "PLANNER" in ev or "OBS" in ev or "HYP" in ev or "DEC" in ev:
-                                    color = "text-amber-400"
-                                elif "REVIEW" in ev:
-                                    color = "text-cyan-400"
-                                elif "REFLECT" in ev or "MUTATE" in ev:
-                                    color = "text-purple-400"
-                                elif "HALL" in ev:
-                                    color = "text-blue-400"
-
-                                with ui.row().classes("w-full gap-2 py-0.5"):
-                                    ui.label(entry["time"]).classes("text-xs text-gray-500 font-mono w-16 shrink-0")
-                                    ui.label(ev).classes(f"text-xs font-bold {color} w-32 shrink-0")
-                                    ui.label(entry["details"]).classes("text-xs text-gray-400 break-all")
-
-                    ui.timer(0.5, _update_activity)
+            ui.timer(0.5, _update_log)
+            ui.timer(0.5, _update_activity)
 
 
 # ═══════════════════════════════════════════════════
@@ -889,6 +883,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
         for risk_idx, risk_config in enumerate(risk_configs):
             if state.should_stop:
+                state.log("⛔ СТОП", "Остановлено пользователем")
                 state.current_status = "Остановлено пользователем"
                 break
 
@@ -963,15 +958,21 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                                 attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
 
                         state.log("✅ СГЕНЕРИРОВАНО", f"{len(attacks) if attacks else 0} атак")
+                        if state.should_stop:
+                            state.log("⛔ СТОП", "Остановлено пользователем"); break
 
                         if attacks:
                             state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} атак в target...")
-                            raw_results = await runner.run_batch(attacks, delay=0.5)
+                            raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
+                            if state.should_stop:
+                                state.log("⛔ СТОП", "Остановлено пользователем"); break
                             avg_ms = sum(r.response_time_ms for r in raw_results) / max(len(raw_results), 1)
                             state.log("📥 ПОЛУЧЕНО", f"{len(raw_results)} ответов, avg {avg_ms:.0f}ms")
 
                             state.log("⚖️ SCORING", f"Judge ({factory.judge.model}) оценивает {len(raw_results)} ответов...")
                             scored_single = await _run_in_bg(scorer.score_batch, attacks, raw_results)
+                            if state.should_stop:
+                                state.log("⛔ СТОП", "Остановлено пользователем"); break
                             all_scored.extend(scored_single)
 
                     # Multi-turn часть
@@ -1091,7 +1092,7 @@ async def _run_hall_flow(
     state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} HALL атак в target...")
     state.current_status = f"[{risk_id}] Отправка {len(attacks)} HALL атак..."
     await asyncio.sleep(0.05)
-    raw_results = await runner.run_batch(attacks, delay=0.5)
+    raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
     state.log("🔍 HALL VERIFY", f"Проверка {len(raw_results)} ответов по ground truth...")
 
     state.current_status = f"[{risk_id}] Верификация ответов через KB..."
