@@ -528,7 +528,7 @@ def page_dashboard():
                                     ui.separator()
                                     ui.label(f"Judge: {r.judge_reasoning}").classes("text-xs text-gray-400 break-all")
 
-            ui.timer(0.5, _update_log)
+                    ui.timer(0.5, _update_log)
 
                 # TAB 2: Activity Log
                 with ui.tab_panel(tab_activity):
@@ -1126,7 +1126,4 @@ async def _run_hall_flow(
 # ═══════════════════════════════════════════════════
 
 if __name__ in {"__main__", "__mp_main__"}:
-    # Увеличить таймаут WebSocket для длинных LLM-вызовов
-    app.config.socket_io_ping_interval = 25
-    app.config.socket_io_ping_timeout = 120
     ui.run(title="Agent-Breaker v2", port=8080, dark=True, reload=False)
