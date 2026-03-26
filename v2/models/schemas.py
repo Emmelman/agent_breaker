@@ -106,6 +106,9 @@ class Attack(BaseModel):
     payload: str
     generation: int = 1
     parent_id: Optional[str] = None
+    # Для HALL верификации
+    ground_truth: Optional[str] = None
+    source_document: Optional[str] = None
 
 
 class AttackResult(BaseModel):
@@ -125,6 +128,46 @@ class AttackResult(BaseModel):
 # --- Эволюция ---
 
 
+class MultiTurnChain(BaseModel):
+    """Многоходовая цепочка атак."""
+
+    id: str
+    risk_id: str
+    technique: str
+    steps: List[str]
+    target_factors: List[str] = Field(default_factory=list)
+    generation: int = 1
+    description: str = ""
+
+
+class MultiTurnResult(BaseModel):
+    """Результат multi-turn цепочки."""
+
+    chain_id: str
+    risk_id: str
+    steps_sent: int
+    steps_results: List[AttackResult] = Field(default_factory=list)
+    is_successful: bool = False
+    breakthrough_step: Optional[int] = None
+    confidence: float = 0.0
+    judge_reasoning: str = ""
+
+
+class AttackDecision(BaseModel):
+    """Решение планировщика о следующем шаге."""
+
+    attack_mode: str = "single_turn"  # "single_turn" | "multi_turn" | "mixed"
+    single_turn_share: int = 100
+    multi_turn_share: int = 0
+    reasoning: str = ""
+    observation: str = ""
+    hypothesis: str = ""
+    focus_techniques: List[str] = Field(default_factory=list)
+    avoid_techniques: List[str] = Field(default_factory=list)
+    escalation_reason: Optional[str] = None
+    confidence: float = 0.5
+
+
 class EvolutionCycle(BaseModel):
     """Один цикл эволюции."""
 
@@ -135,6 +178,20 @@ class EvolutionCycle(BaseModel):
     exploitation_rate: float
     learnings: str = ""
     mutations_applied: List[str] = Field(default_factory=list)
+    # Multi-model review
+    review_approved: int = 0
+    review_rejected: int = 0
+    review_suggestions: str = ""
+    # Planner
+    attack_mode: str = "single_turn"
+    single_turn_share: int = 100
+    multi_turn_share: int = 0
+    planner_reasoning: str = ""
+    planner_observation: str = ""
+    planner_hypothesis: str = ""
+    planner_confidence: float = 0.5
+    escalation_reason: Optional[str] = None
+    avoid_techniques: List[str] = Field(default_factory=list)
 
 
 # --- Отчёт ---

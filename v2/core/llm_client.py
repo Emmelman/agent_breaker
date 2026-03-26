@@ -176,3 +176,82 @@ class LLMClient:
     def reset_token_counter(self) -> None:
         """Сброс счётчика токенов."""
         self._total_tokens = 0
+
+
+class LLMFactory:
+    """
+    Фабрика LLM клиентов с разными ролями (Ouroboros multi-model pattern).
+
+    Роли: attacker (генерация), judge (оценка), reviewer (ревью мутаций).
+    """
+
+    def __init__(self, config_path: str | None = None, config: dict | None = None) -> None:
+        """
+        Args:
+            config_path: Путь к config.yaml.
+            config: Готовый словарь конфигурации (приоритет над config_path).
+        """
+        self._clients: Dict[str, LLMClient] = {}
+
+        if config:
+            self._config = config
+        elif config_path:
+            self._config = self._load_config(config_path)
+        else:
+            # Дефолтный путь
+            from pathlib import Path
+            default_path = Path(__file__).parent.parent / "config.yaml"
+            self._config = self._load_config(str(default_path))
+
+        llm_cfg = self._config.get("llm", {})
+        self._base_url = llm_cfg.get("base_url", "http://127.0.0.1:1234")
+        self._fallback = llm_cfg.get("fallback_model", "gemma-3-12b-it")
+        self._timeout = llm_cfg.get("timeout", _TIMEOUT)
+        self._max_retries = llm_cfg.get("max_retries", _MAX_RETRIES)
+        self._models_config = llm_cfg.get("models", {})
+
+    def get_client(self, role: str) -> LLMClient:
+        """
+        Получить LLM клиент по роли.
+
+        Роли: "attacker", "judge", "reviewer".
+        Если роль не настроена — возвращает fallback.
+        """
+        if role not in self._clients:
+            model_config = self._models_config.get(role, {})
+            model = model_config.get("model", self._fallback)
+            temperature = model_config.get("temperature", 0.7)
+            max_tokens = model_config.get("max_tokens", 2048)
+
+            self._clients[role] = LLMClient(
+                base_url=self._base_url,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
+            logger.info("LLM [%s]: модель=%s, temp=%.1f", role, model, temperature)
+
+        return self._clients[role]
+
+    @property
+    def attacker(self) -> LLMClient:
+        """LLM для генерации атак и мутаций."""
+        return self.get_client("attacker")
+
+    @property
+    def judge(self) -> LLMClient:
+        """LLM для оценки ответов (LLM-as-Judge)."""
+        return self.get_client("judge")
+
+    @property
+    def reviewer(self) -> LLMClient:
+        """LLM для ревью эволюционных мутаций."""
+        return self.get_client("reviewer")
+
+    @staticmethod
+    def _load_config(path: str) -> dict:
+        import yaml
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
