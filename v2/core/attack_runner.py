@@ -1,16 +1,16 @@
 """
 HTTP-клиент для отправки атак в target agent.
 
-Поддерживает формат chatbot-professor: POST /api/chat с JSON body.
+Поддерживает несколько форматов ответа: chatbot-professor, OpenAI, и др.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
-import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 
@@ -34,6 +34,29 @@ class AttackRunner:
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         logger.info("AttackRunner: target=%s, timeout=%ds", target_url, timeout)
 
+    async def check_target(self) -> bool:
+        """Проверить доступность target agent."""
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as session:
+                async with session.post(
+                    self._target_url,
+                    json={"message": "ping"},
+                ) as resp:
+                    data = await resp.json()
+                    response_text = self._extract_response(data)
+                    logger.info(
+                        "Target check: status=%d, keys=%s, response=%s",
+                        resp.status,
+                        list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                        response_text[:100] if response_text else "ПУСТО",
+                    )
+                    return resp.status == 200 and bool(response_text)
+        except Exception as e:
+            logger.error("Target недоступен: %s", e)
+            return False
+
     async def run_attack(
         self,
         attack: Attack,
@@ -49,7 +72,7 @@ class AttackRunner:
         Returns:
             AttackResult с сырым ответом (без скоринга).
         """
-        body = {"message": attack.payload}
+        body: Dict[str, Any] = {"message": attack.payload}
         if conversation_id:
             body["conversation_id"] = conversation_id
 
@@ -62,16 +85,44 @@ class AttackRunner:
                     json=body,
                 ) as resp:
                     elapsed_ms = (time.monotonic() - start_time) * 1000
-                    data = await resp.json()
 
-                    response_text = data.get("response", "")
+                    # HTTP-ошибки
+                    if resp.status >= 400:
+                        error_body = await resp.text()
+                        logger.error(
+                            "HTTP %d от target для %s: %s",
+                            resp.status,
+                            attack.id,
+                            error_body[:300],
+                        )
+                        return AttackResult(
+                            attack_id=attack.id,
+                            risk_id=attack.risk_id,
+                            payload=attack.payload,
+                            response=f"HTTP_ERROR_{resp.status}: {error_body[:200]}",
+                            response_time_ms=elapsed_ms,
+                            generation=attack.generation,
+                        )
 
-                    logger.debug(
-                        "Атака %s → %d ms, ответ: %s",
+                    raw_data = await resp.json()
+
+                    # Диагностика — логируем формат ответа
+                    logger.info(
+                        "Response от target [%s]: status=%d, keys=%s, preview=%s",
                         attack.id,
-                        int(elapsed_ms),
-                        response_text[:100],
+                        resp.status,
+                        list(raw_data.keys()) if isinstance(raw_data, dict) else type(raw_data).__name__,
+                        str(raw_data)[:300],
                     )
+
+                    response_text = self._extract_response(raw_data)
+
+                    if not response_text:
+                        logger.warning(
+                            "ПУСТОЙ ответ от target для %s! Raw: %s",
+                            attack.id,
+                            str(raw_data)[:500],
+                        )
 
                     return AttackResult(
                         attack_id=attack.id,
@@ -117,13 +168,58 @@ class AttackRunner:
             result = await self.run_attack(attack, conversation_id=conversation_id)
             results.append(result)
 
-            # Задержка между атаками (кроме последней)
             if i < len(attacks) - 1 and delay > 0:
                 await asyncio.sleep(delay)
 
+        non_empty = sum(1 for r in results if r.response and not r.response.startswith("ERROR"))
         logger.info(
-            "Batch завершён: %d атак отправлено, средний response time: %.0f ms",
+            "Batch завершён: %d атак, %d с ответом, средний response time: %.0f ms",
             len(results),
+            non_empty,
             sum(r.response_time_ms for r in results) / max(len(results), 1),
         )
         return results
+
+    @staticmethod
+    def _extract_response(data: Any) -> str:
+        """
+        Извлечь текст ответа из response body.
+
+        Поддерживает несколько форматов:
+        - {"response": "текст"}           — chatbot-professor v1
+        - {"message": "текст"}            — альтернативный формат
+        - {"choices": [{"message": {"content": "текст"}}]}  — OpenAI
+        - {"text": "текст"}               — простой формат
+        - {"data": {"response": "текст"}} — вложенный формат
+        """
+        if isinstance(data, str):
+            return data
+
+        if not isinstance(data, dict):
+            return str(data)[:2000]
+
+        # Прямые ключи (приоритетный порядок)
+        for key in ("response", "message", "text", "answer", "reply", "content"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+
+        # OpenAI-like format
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0]
+            if isinstance(choice, dict):
+                msg = choice.get("message", {})
+                if isinstance(msg, dict) and "content" in msg:
+                    return str(msg["content"])
+
+        # Вложенный формат
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            for key in ("response", "message", "text"):
+                val = nested.get(key)
+                if val is not None:
+                    return str(val)
+
+        # Фоллбэк — весь JSON как строка
+        return json.dumps(data, ensure_ascii=False)[:2000]

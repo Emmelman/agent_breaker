@@ -156,6 +156,7 @@ def test_attack_runner_run_attack():
 
     # Мокаем aiohttp
     mock_resp = MagicMock()
+    mock_resp.status = 200
     mock_resp.json = AsyncMock(return_value={"response": "Я профессор", "conversation_id": "123"})
     mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
     mock_resp.__aexit__ = AsyncMock(return_value=False)
