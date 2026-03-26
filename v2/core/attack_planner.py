@@ -12,6 +12,7 @@ import logging
 from typing import List
 
 from core.llm_client import LLMClient
+from core.utils import strip_llm_wrapper
 from models.schemas import AttackDecision, AttackResult, EvolutionCycle, RiskConfig
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ JSON:
 
         try:
             raw = self._llm.chat(messages, temperature=0.3)
-            data = json.loads(_strip_markdown(raw))
+            data = json.loads(strip_llm_wrapper(raw))
 
             # Валидация пропорций
             st_share = int(data.get("single_turn_share", 100))
@@ -179,10 +180,3 @@ JSON:
         return "\n".join(lines) or "Нет результатов"
 
 
-def _strip_markdown(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
-    return text

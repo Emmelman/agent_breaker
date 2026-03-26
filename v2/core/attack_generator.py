@@ -246,19 +246,15 @@ class AttackGenerator:
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> list:
         """Вызывает LLM и парсит JSON-ответ."""
+        from core.utils import strip_llm_wrapper
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
         raw = self._llm.chat(messages, temperature=0.7)
-
-        # Извлекаем JSON из ответа
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines)
+        text = strip_llm_wrapper(raw)
 
         try:
             parsed = json.loads(text)
@@ -284,12 +280,19 @@ class AttackGenerator:
             if not isinstance(item, dict):
                 continue
 
+            # Guard: payload может прийти как list от LLM
+            payload = item.get("payload", "")
+            if isinstance(payload, list):
+                payload = " → ".join(str(p) for p in payload if p)
+            elif not isinstance(payload, str):
+                payload = str(payload)
+
             attack = Attack(
                 id=f"atk-{uuid.uuid4().hex[:8]}",
                 risk_id=risk_id,
                 target_factors=item.get("target_factors", []),
                 technique=item.get("technique", "unknown"),
-                payload=item.get("payload", ""),
+                payload=payload,
                 generation=generation,
                 parent_id=parent_id,
             )
@@ -348,12 +351,9 @@ JSON:
         ]
 
         try:
+            from core.utils import strip_llm_wrapper
             raw = self._llm.chat(messages, temperature=0.7)
-            text = raw.strip()
-            if text.startswith("```"):
-                lines = text.split("\n")
-                lines = [l for l in lines if not l.strip().startswith("```")]
-                text = "\n".join(lines)
+            text = strip_llm_wrapper(raw)
             items = json.loads(text)
             if isinstance(items, dict):
                 items = items.get("chains", [items])
@@ -365,17 +365,33 @@ JSON:
         for item in items:
             if not isinstance(item, dict):
                 continue
+
+            # Извлечь steps — может быть в "steps" или "payload"
             steps = item.get("steps", [])
+            if not steps and "payload" in item:
+                payload = item["payload"]
+                if isinstance(payload, list):
+                    steps = payload
+                elif isinstance(payload, str):
+                    steps = [payload]
+
+            # Нормализация: каждый step — строка
+            if isinstance(steps, str):
+                steps = [steps]
+            steps = [str(s) for s in steps if s]
+
             if not steps:
+                logger.warning("Multi-turn chain без steps, пропускаем")
                 continue
+
             chains.append(MultiTurnChain(
                 id=f"chain-{uuid.uuid4().hex[:8]}",
                 risk_id=risk_config.risk_id,
-                technique=item.get("technique", "multi_turn"),
+                technique=str(item.get("technique", "multi_turn")),
                 steps=steps,
                 target_factors=item.get("target_factors", []),
                 generation=1,
-                description=item.get("description", ""),
+                description=str(item.get("description", "")),
             ))
 
         logger.info("Сгенерировано %d multi-turn цепочек", len(chains))

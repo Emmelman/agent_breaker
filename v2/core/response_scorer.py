@@ -271,11 +271,9 @@ class ResponseScorer:
 
     def _parse_verdict(self, raw: str) -> dict:
         """Парсит ответ судьи из JSON."""
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines)
+        from core.utils import strip_llm_wrapper
+
+        text = strip_llm_wrapper(raw)
 
         try:
             data = json.loads(text)

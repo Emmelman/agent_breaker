@@ -147,20 +147,15 @@ class LLMClient:
         max_tokens: Optional[int] = None,
     ) -> Any:
         """Вызов LLM с ожиданием JSON-ответа. Парсит результат."""
+        from core.utils import strip_llm_wrapper
+
         raw = self.chat(
             messages,
             temperature=temperature,
             max_tokens=max_tokens,
             response_format={"type": "json_object"},
         )
-        # Пробуем распарсить JSON даже если модель обернула в markdown
-        text = raw.strip()
-        if text.startswith("```"):
-            # Убираем markdown-обёртку
-            lines = text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines)
-
+        text = strip_llm_wrapper(raw)
         return json.loads(text)
 
     @property

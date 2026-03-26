@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from core.attack_generator import AttackGenerator
 from core.llm_client import LLMClient
+from core.utils import strip_llm_wrapper
 from models.schemas import Attack, AttackResult, EvolutionCycle, RiskConfig
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ class EvolutionEngine:
 
         try:
             raw = self._reviewer.chat(messages, temperature=0.3)
-            review = json.loads(_strip_markdown(raw))
+            review = json.loads(strip_llm_wrapper(raw))
 
             approved_indices = review.get("approved", list(range(len(new_attacks))))
             approved = [new_attacks[i] for i in approved_indices if i < len(new_attacks)]
@@ -286,7 +287,7 @@ class EvolutionEngine:
 
         try:
             raw = self._llm.chat(messages, temperature=0.3)
-            return json.loads(_strip_markdown(raw))
+            return json.loads(strip_llm_wrapper(raw))
         except (json.JSONDecodeError, Exception) as e:
             logger.error("Ошибка рефлексии: %s", e)
             return {
@@ -340,11 +341,3 @@ class EvolutionEngine:
             json.dump(memory, f, ensure_ascii=False, indent=2)
 
 
-def _strip_markdown(text: str) -> str:
-    """Убрать markdown обёртку с JSON."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
-    return text

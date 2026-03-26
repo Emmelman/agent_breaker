@@ -478,20 +478,41 @@ def page_dashboard():
                         idx = start_idx + i + 1
                         border = "border-green-500" if r.is_successful else "border-red-500"
                         icon = "+" if r.is_successful else "-"
+                        badge_cls = "text-green-400" if r.is_successful else "text-red-400"
+
                         with ui.card().classes(f"w-full border-l-4 {border} p-2"):
                             with ui.row().classes("items-center gap-2"):
-                                ui.label(f"#{idx}").classes("text-xs text-gray-500")
+                                ui.label(f"#{idx}").classes("text-xs text-gray-500 font-mono")
                                 ui.label(f"Gen {r.generation}").classes("text-xs text-gray-400")
-                                ui.label(r.risk_id).classes("text-xs font-bold")
-                                badge_cls = "text-green-400" if r.is_successful else "text-red-400"
-                                ui.label(f"{icon} {r.confidence:.2f}").classes(f"text-xs {badge_cls}")
-                            with ui.expansion("Детали").classes("w-full"):
-                                ui.label(f"Payload: {r.payload[:300]}").classes("text-xs")
+                                ui.label(r.risk_id).classes("text-xs font-bold text-white")
+                                ui.label(f"{icon} {r.confidence:.2f}").classes(f"text-sm font-bold {badge_cls}")
+
+                            # Payload — всегда виден
+                            p_prev = r.payload[:150] + ("..." if len(r.payload) > 150 else "")
+                            ui.label(p_prev).classes("text-xs text-gray-300 mt-1")
+
+                            # Response — всегда виден
+                            if r.response and not r.response.startswith("ERROR"):
+                                resp_prev = r.response[:150] + ("..." if len(r.response) > 150 else "")
+                                ui.label(resp_prev).classes("text-xs text-blue-300")
+                            elif r.response:
+                                ui.label(r.response[:100]).classes("text-xs text-red-300")
+                            else:
+                                ui.label("(пустой ответ)").classes("text-xs text-gray-500 italic")
+
+                            # Judge reasoning
+                            if r.judge_reasoning:
+                                j_prev = r.judge_reasoning[:150] + ("..." if len(r.judge_reasoning) > 150 else "")
+                                ui.label(j_prev).classes("text-xs text-gray-400")
+
+                            # Полный текст
+                            with ui.expansion("Полный текст").classes("w-full"):
+                                ui.label(f"Payload: {r.payload}").classes("text-xs break-all")
                                 ui.separator()
-                                ui.label(f"Response: {r.response[:300]}").classes("text-xs text-gray-300")
+                                ui.label(f"Response: {r.response}").classes("text-xs text-gray-300 break-all")
                                 if r.judge_reasoning:
                                     ui.separator()
-                                    ui.label(f"Judge: {r.judge_reasoning[:200]}").classes("text-xs text-gray-400")
+                                    ui.label(f"Judge: {r.judge_reasoning}").classes("text-xs text-gray-400 break-all")
 
             ui.timer(0.5, _update_log)
 
@@ -698,130 +719,137 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             attacks_count = state.risk_configs.get(risk_id, {}).get("attacks_count", 10)
             max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
 
-            state.progress = risk_idx / total_risks
-            await asyncio.sleep(0.05)
+            try:
+                # === HALL: специальный flow ===
+                if risk_id == "HALL" and hall_verifier and hall_verifier.document_count > 0:
+                    await _run_hall_flow(hall_verifier, runner, risk_config, attacks_count)
+                    state.progress = (risk_idx + 1) / total_risks
+                    continue
 
-            # === HALL: специальный flow ===
-            if risk_id == "HALL" and hall_verifier and hall_verifier.document_count > 0:
-                await _run_hall_flow(
-                    hall_verifier, runner, risk_config, attacks_count,
-                )
-                state.progress = (risk_idx + 1) / total_risks
-                continue
+                # === Обычный flow с Planner ===
+                attacks: List[Attack] = []
+                scored_results: List[AttackResult] = []
 
-            # === Обычный flow с Planner ===
-            attacks: List[Attack] = []
-            scored_results: List[AttackResult] = []
+                for cycle_num in range(1, max_cycles + 1):
+                    if state.should_stop:
+                        break
 
-            for cycle_num in range(1, max_cycles + 1):
-                if state.should_stop:
-                    break
-
-                # Planner решает стратегию
-                if cycle_num == 1:
-                    decision = planner.plan_initial(risk_config)
-                elif state.planning_mode == "auto":
-                    decision = planner.plan_next(risk_config, state.evolution_history, scored_results)
-                elif state.planning_mode == "multi":
-                    decision = AttackDecision(
-                        attack_mode="multi_turn", single_turn_share=0, multi_turn_share=100,
-                        reasoning="Forced multi-turn mode",
-                    )
-                else:
-                    decision = AttackDecision(
-                        attack_mode="single_turn",
-                        reasoning="Forced single-turn mode",
-                    )
-
-                state.current_status = (
-                    f"[{risk_id}] Gen {cycle_num}: {decision.attack_mode} — {decision.reasoning[:80]}"
-                )
-                await asyncio.sleep(0.05)
-
-                all_scored: List[AttackResult] = []
-
-                # Single-turn часть
-                single_count = int(attacks_count * decision.single_turn_share / 100)
-                if single_count > 0:
-                    state.current_status = f"[{risk_id}] Gen {cycle_num}: single-turn ({single_count})..."
-                    await asyncio.sleep(0.05)
-
+                    # Planner решает стратегию
                     if cycle_num == 1:
-                        attacks = generator.generate(
-                            risk_config, count=single_count,
-                            focus_techniques=decision.focus_techniques,
-                            avoid_techniques=decision.avoid_techniques,
+                        decision = planner.plan_initial(risk_config)
+                    elif state.planning_mode == "auto":
+                        decision = planner.plan_next(risk_config, state.evolution_history, scored_results)
+                    elif state.planning_mode == "multi":
+                        decision = AttackDecision(
+                            attack_mode="multi_turn", single_turn_share=0, multi_turn_share=100,
+                            reasoning="Forced multi-turn mode",
                         )
                     else:
-                        attacks = evolution.get_new_attacks(risk_config, attacks, scored_results)
-                        if not attacks:
-                            attacks = generator.generate(risk_config, count=single_count)
+                        decision = AttackDecision(
+                            attack_mode="single_turn",
+                            reasoning="Forced single-turn mode",
+                        )
 
-                    if attacks:
-                        raw_results = await runner.run_batch(attacks, delay=0.5)
-                        scored_single = scorer.score_batch(attacks, raw_results)
-                        all_scored.extend(scored_single)
-
-                # Multi-turn часть
-                multi_chains = max(int(attacks_count * decision.multi_turn_share / 100) // 3, 0)
-                if decision.multi_turn_share > 0 and multi_chains == 0:
-                    multi_chains = 1
-
-                if multi_chains > 0:
-                    state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
-                    await asyncio.sleep(0.05)
-
-                    chains = generator.generate_multi_turn(
-                        risk_config, count=multi_chains,
-                        focus_techniques=decision.focus_techniques,
+                    state.current_status = (
+                        f"[{risk_id}] Gen {cycle_num}: {decision.attack_mode} — {decision.reasoning[:80]}"
                     )
-                    for chain in chains:
-                        chain_result = await runner.run_chain(chain)
-                        scored_chain = scorer.score_chain(chain, chain_result)
-                        all_scored.extend(scored_chain.steps_results)
-
-                scored_results = all_scored
-                state.all_results.extend(scored_results)
-                await asyncio.sleep(0.05)
-
-                # Статистика цикла
-                successful = sum(1 for r in scored_results if r.is_successful)
-                rate = successful / max(len(scored_results), 1)
-
-                cycle = EvolutionCycle(
-                    cycle_number=cycle_num, risk_id=risk_id,
-                    total_attacks=len(scored_results), successful_attacks=successful,
-                    exploitation_rate=rate,
-                    attack_mode=decision.attack_mode,
-                    single_turn_share=decision.single_turn_share,
-                    multi_turn_share=decision.multi_turn_share,
-                    planner_reasoning=decision.reasoning,
-                    planner_observation=decision.observation,
-                    planner_hypothesis=decision.hypothesis,
-                    planner_confidence=decision.confidence,
-                    escalation_reason=decision.escalation_reason,
-                    avoid_techniques=decision.avoid_techniques,
-                )
-                state.evolution_history.append(cycle)
-
-                state.current_status = (
-                    f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% "
-                    f"({successful}/{len(scored_results)}) [{decision.attack_mode}]"
-                )
-
-                # Эволюция (если не последний цикл)
-                if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
-                    state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
                     await asyncio.sleep(0.05)
-                    evo_cycle = evolution.run_cycle(risk_config, attacks, scored_results)
-                    # Объединяем planner + evolution данные
-                    evo_cycle.attack_mode = decision.attack_mode
-                    evo_cycle.planner_reasoning = decision.reasoning
-                    evo_cycle.planner_observation = decision.observation
-                    evo_cycle.planner_hypothesis = decision.hypothesis
-                    evo_cycle.planner_confidence = decision.confidence
-                    evo_cycle.escalation_reason = decision.escalation_reason
-                    state.evolution_history[-1] = evo_cycle
+
+                    all_scored: List[AttackResult] = []
+
+                    # Single-turn часть
+                    single_count = int(attacks_count * decision.single_turn_share / 100)
+                    if single_count > 0:
+                        state.current_status = f"[{risk_id}] Gen {cycle_num}: single-turn ({single_count})..."
+                        await asyncio.sleep(0.05)
+
+                        if cycle_num == 1:
+                            attacks = generator.generate(
+                                risk_config, count=single_count,
+                                focus_techniques=decision.focus_techniques,
+                                avoid_techniques=decision.avoid_techniques,
+                            )
+                        else:
+                            attacks = evolution.get_new_attacks(risk_config, attacks, scored_results)
+                            if not attacks:
+                                attacks = generator.generate(risk_config, count=single_count)
+
+                        if attacks:
+                            raw_results = await runner.run_batch(attacks, delay=0.5)
+                            scored_single = scorer.score_batch(attacks, raw_results)
+                            all_scored.extend(scored_single)
+
+                    # Multi-turn часть
+                    multi_chains = max(int(attacks_count * decision.multi_turn_share / 100) // 3, 0)
+                    if decision.multi_turn_share > 0 and multi_chains == 0:
+                        multi_chains = 1
+
+                    if multi_chains > 0:
+                        state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
+                        await asyncio.sleep(0.05)
+
+                        chains = generator.generate_multi_turn(
+                            risk_config, count=multi_chains,
+                            focus_techniques=decision.focus_techniques,
+                        )
+                        for chain in chains:
+                            chain_result = await runner.run_chain(chain)
+                            scored_chain = scorer.score_chain(chain, chain_result)
+                            all_scored.extend(scored_chain.steps_results)
+
+                    scored_results = all_scored
+                    state.all_results.extend(scored_results)
+                    await asyncio.sleep(0.05)
+
+                    # Статистика цикла
+                    successful = sum(1 for r in scored_results if r.is_successful)
+                    rate = successful / max(len(scored_results), 1)
+
+                    cycle = EvolutionCycle(
+                        cycle_number=cycle_num, risk_id=risk_id,
+                        total_attacks=len(scored_results), successful_attacks=successful,
+                        exploitation_rate=rate,
+                        attack_mode=decision.attack_mode,
+                        single_turn_share=decision.single_turn_share,
+                        multi_turn_share=decision.multi_turn_share,
+                        planner_reasoning=decision.reasoning,
+                        planner_observation=decision.observation,
+                        planner_hypothesis=decision.hypothesis,
+                        planner_confidence=decision.confidence,
+                        escalation_reason=decision.escalation_reason,
+                        avoid_techniques=decision.avoid_techniques,
+                    )
+                    state.evolution_history.append(cycle)
+
+                    state.current_status = (
+                        f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% "
+                        f"({successful}/{len(scored_results)}) [{decision.attack_mode}]"
+                    )
+
+                    # Эволюция (если не последний цикл)
+                    if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
+                        state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
+                        await asyncio.sleep(0.05)
+                        evo_cycle = evolution.run_cycle(risk_config, attacks, scored_results)
+                        evo_cycle.attack_mode = decision.attack_mode
+                        evo_cycle.planner_reasoning = decision.reasoning
+                        evo_cycle.planner_observation = decision.observation
+                        evo_cycle.planner_hypothesis = decision.hypothesis
+                        evo_cycle.planner_confidence = decision.confidence
+                        evo_cycle.escalation_reason = decision.escalation_reason
+                        state.evolution_history[-1] = evo_cycle
+
+            except Exception as e:
+                logger.exception("Ошибка при тестировании риска %s", risk_id)
+                state.current_status = f"ОШИБКА [{risk_id}]: {e}"
+                state.evolution_history.append(EvolutionCycle(
+                    cycle_number=0, risk_id=risk_id,
+                    total_attacks=0, successful_attacks=0,
+                    exploitation_rate=0.0,
+                    learnings=f"Ошибка: {str(e)[:200]}",
+                ))
+                await asyncio.sleep(0.5)
+                continue
 
             state.progress = (risk_idx + 1) / total_risks
 

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from core.llm_client import LLMClient
+from core.utils import strip_llm_wrapper
 from models.schemas import Attack, AttackResult, RiskConfig
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ class HallVerifier:
 
             try:
                 raw = self._llm.chat(messages, temperature=0.3)
-                data = json.loads(_strip_markdown(raw))
+                data = json.loads(strip_llm_wrapper(raw))
 
                 question = data.get("question", "")
                 ground_truth = data.get("ground_truth", "")
@@ -253,7 +254,7 @@ class HallVerifier:
         attacks = []
         try:
             raw = self._llm.chat(messages, temperature=0.5)
-            questions = json.loads(_strip_markdown(raw))
+            questions = json.loads(strip_llm_wrapper(raw))
 
             for q in questions:
                 question = q.get("question", "")
@@ -305,7 +306,7 @@ class HallVerifier:
         attacks = []
         try:
             raw = self._llm.chat(messages, temperature=0.4)
-            items = json.loads(_strip_markdown(raw))
+            items = json.loads(strip_llm_wrapper(raw))
 
             for item in items:
                 question = item.get("question", "")
@@ -369,7 +370,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
 
         try:
             raw = self._judge.chat(messages, temperature=0.1)
-            verdict = json.loads(_strip_markdown(raw))
+            verdict = json.loads(strip_llm_wrapper(raw))
             return AttackResult(
                 attack_id=attack.id, risk_id="HALL",
                 payload=attack.payload, response=response,
@@ -408,7 +409,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
 
         try:
             raw = self._judge.chat(messages, temperature=0.1)
-            verdict = json.loads(_strip_markdown(raw))
+            verdict = json.loads(strip_llm_wrapper(raw))
             return AttackResult(
                 attack_id=attack.id, risk_id="HALL",
                 payload=attack.payload, response=response,
@@ -428,11 +429,3 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
             )
 
 
-def _strip_markdown(text: str) -> str:
-    """Убрать markdown обёртку."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
-    return text
