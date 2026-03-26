@@ -685,6 +685,16 @@ def _export_markdown(report: SessionReport) -> None:
 #  PIPELINE ТЕСТИРОВАНИЯ
 # ═══════════════════════════════════════════════════
 
+from concurrent.futures import ThreadPoolExecutor
+
+_executor = ThreadPoolExecutor(max_workers=2)
+
+
+async def _run_in_bg(func, *args, **kwargs):
+    """Выполнить блокирующую функцию в фоновом потоке, не блокируя UI."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, lambda: func(*args, **kwargs))
+
 
 async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
     try:
@@ -738,7 +748,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     if cycle_num == 1:
                         decision = planner.plan_initial(risk_config)
                     elif state.planning_mode == "auto":
-                        decision = planner.plan_next(risk_config, state.evolution_history, scored_results)
+                        decision = await _run_in_bg(planner.plan_next, risk_config, state.evolution_history, scored_results)
                     elif state.planning_mode == "multi":
                         decision = AttackDecision(
                             attack_mode="multi_turn", single_turn_share=0, multi_turn_share=100,
@@ -764,19 +774,19 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         await asyncio.sleep(0.05)
 
                         if cycle_num == 1:
-                            attacks = generator.generate(
-                                risk_config, count=single_count,
+                            attacks = await _run_in_bg(
+                                generator.generate, risk_config, count=single_count,
                                 focus_techniques=decision.focus_techniques,
                                 avoid_techniques=decision.avoid_techniques,
                             )
                         else:
-                            attacks = evolution.get_new_attacks(risk_config, attacks, scored_results)
+                            attacks = await _run_in_bg(evolution.get_new_attacks, risk_config, attacks, scored_results)
                             if not attacks:
-                                attacks = generator.generate(risk_config, count=single_count)
+                                attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
 
                         if attacks:
                             raw_results = await runner.run_batch(attacks, delay=0.5)
-                            scored_single = scorer.score_batch(attacks, raw_results)
+                            scored_single = await _run_in_bg(scorer.score_batch, attacks, raw_results)
                             all_scored.extend(scored_single)
 
                     # Multi-turn часть
@@ -788,13 +798,13 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
                         await asyncio.sleep(0.05)
 
-                        chains = generator.generate_multi_turn(
-                            risk_config, count=multi_chains,
+                        chains = await _run_in_bg(
+                            generator.generate_multi_turn, risk_config, count=multi_chains,
                             focus_techniques=decision.focus_techniques,
                         )
                         for chain in chains:
                             chain_result = await runner.run_chain(chain)
-                            scored_chain = scorer.score_chain(chain, chain_result)
+                            scored_chain = await _run_in_bg(scorer.score_chain, chain, chain_result)
                             all_scored.extend(scored_chain.steps_results)
 
                     scored_results = all_scored
@@ -830,7 +840,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
                         state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
                         await asyncio.sleep(0.05)
-                        evo_cycle = evolution.run_cycle(risk_config, attacks, scored_results)
+                        evo_cycle = await _run_in_bg(evolution.run_cycle, risk_config, attacks, scored_results)
                         evo_cycle.attack_mode = decision.attack_mode
                         evo_cycle.planner_reasoning = decision.reasoning
                         evo_cycle.planner_observation = decision.observation
@@ -876,9 +886,9 @@ async def _run_hall_flow(
 
     # Генерация с учётом факторов
     if risk_config.selected_factors:
-        attacks = verifier.generate_hall_attacks_by_factors(risk_config, count=attacks_count)
+        attacks = await _run_in_bg(verifier.generate_hall_attacks_by_factors, risk_config, count=attacks_count)
     else:
-        attacks = verifier.generate_hall_attacks(count=attacks_count)
+        attacks = await _run_in_bg(verifier.generate_hall_attacks, count=attacks_count)
 
     if not attacks:
         state.current_status = f"[{risk_id}] Не удалось сгенерировать HALL атаки"
@@ -893,7 +903,7 @@ async def _run_hall_flow(
 
     scored = []
     for attack, raw in zip(attacks, raw_results):
-        result = verifier.verify_response(attack, raw.response)
+        result = await _run_in_bg(verifier.verify_response, attack, raw.response)
         result.response_time_ms = raw.response_time_ms
         scored.append(result)
 
@@ -920,4 +930,7 @@ async def _run_hall_flow(
 # ═══════════════════════════════════════════════════
 
 if __name__ in {"__main__", "__mp_main__"}:
+    # Увеличить таймаут WebSocket для длинных LLM-вызовов
+    app.config.socket_io_ping_interval = 25
+    app.config.socket_io_ping_timeout = 120
     ui.run(title="Agent-Breaker v2", port=8080, dark=True, reload=False)

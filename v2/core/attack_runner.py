@@ -127,7 +127,15 @@ class AttackRunner:
                             str(raw_data)[:500],
                         )
 
-                    return AttackResult(
+                    # Извлечь conversation_id для multi-turn
+                    conv_id = None
+                    if isinstance(raw_data, dict):
+                        for key in ("conversation_id", "session_id", "conv_id"):
+                            if key in raw_data and isinstance(raw_data[key], str):
+                                conv_id = raw_data[key]
+                                break
+
+                    result = AttackResult(
                         attack_id=attack.id,
                         risk_id=attack.risk_id,
                         payload=attack.payload,
@@ -135,6 +143,8 @@ class AttackRunner:
                         response_time_ms=elapsed_ms,
                         generation=attack.generation,
                     )
+                    result._conversation_id = conv_id  # type: ignore[attr-defined]
+                    return result
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             elapsed_ms = (time.monotonic() - start_time) * 1000
@@ -188,10 +198,15 @@ class AttackRunner:
         chain: "MultiTurnChain",
         delay: float = 2.0,
     ) -> "MultiTurnResult":
-        """Выполнить multi-turn цепочку в одной conversation."""
-        from models.schemas import MultiTurnChain, MultiTurnResult
+        """
+        Выполнить multi-turn цепочку.
 
-        conversation_id = f"chain-{chain.id}"
+        Первый шаг БЕЗ conversation_id → target создаёт сессию.
+        Следующие шаги С реальным conversation_id из ответа.
+        """
+        from models.schemas import MultiTurnResult
+
+        conversation_id: Optional[str] = None
         step_results: List[AttackResult] = []
 
         for i, step_payload in enumerate(chain.steps):
@@ -202,16 +217,31 @@ class AttackRunner:
                 payload=step_payload,
                 generation=chain.generation,
             )
+
             result = await self.run_attack(attack, conversation_id=conversation_id)
             step_results.append(result)
 
-            if i < len(chain.steps) - 1:
+            # После первого шага — извлечь conversation_id
+            if i == 0 and conversation_id is None:
+                conv_id = getattr(result, "_conversation_id", None)
+                if conv_id:
+                    conversation_id = conv_id
+                    logger.info("Multi-turn: conversation_id=%s", conversation_id)
+                else:
+                    logger.warning("Multi-turn: conversation_id не получен")
+
+            # При ошибке — прервать цепочку
+            if result.response.startswith("ERROR:") or result.response.startswith("HTTP_ERROR_"):
+                logger.warning(
+                    "Multi-turn %s прерван на шаге %d: %s",
+                    chain.id, i + 1, result.response[:100],
+                )
+                break
+
+            if i < len(chain.steps) - 1 and delay > 0:
                 await asyncio.sleep(delay)
 
-        logger.info(
-            "Chain %s завершена: %d шагов",
-            chain.id, len(step_results),
-        )
+        logger.info("Chain %s завершена: %d шагов", chain.id, len(step_results))
         return MultiTurnResult(
             chain_id=chain.id,
             risk_id=chain.risk_id,
