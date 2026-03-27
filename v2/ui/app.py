@@ -104,6 +104,18 @@ class AppState:
 state = AppState()
 
 
+_RAG_FACTORS = {"UFR-028", "UFR-030", "UFR-034", "UFR-035", "UFR-039"}
+
+
+def _is_kb_aware_risk(risk_id: str, risk_config: RiskConfig, hall_verifier) -> bool:
+    """True если риск требует KB-aware проверки."""
+    if not hall_verifier or hall_verifier.document_count == 0:
+        return False
+    if risk_id == "HALL":
+        return True
+    return bool(set(risk_config.selected_factors) & _RAG_FACTORS)
+
+
 def _load_kb() -> KnowledgeBase:
     if state.kb is None:
         state.kb = KnowledgeBase()
@@ -901,13 +913,11 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             try:
                 state.log(f"🎯 НАЧАЛО", f"Риск: {risk_id}, атак: {attacks_count}, циклов: {max_cycles}")
 
-                # === HALL: специальный flow ===
-                if risk_id == "HALL" and hall_verifier and hall_verifier.document_count > 0:
-                    await _run_hall_flow(hall_verifier, runner, risk_config, attacks_count)
-                    state.progress = (risk_idx + 1) / total_risks
-                    continue
+                # Определяем KB-aware режим
+                is_kb_aware = _is_kb_aware_risk(risk_id, risk_config, hall_verifier)
+                if is_kb_aware:
+                    state.log("📚 KB-AWARE", f"[{risk_id}] KB-aware режим ({hall_verifier.document_count} документов)")
 
-                # === Обычный flow с Planner ===
                 attacks: List[Attack] = []
                 scored_results: List[AttackResult] = []
 
@@ -948,20 +958,36 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     # Single-turn часть
                     single_count = int(attacks_count * decision.single_turn_share / 100)
                     if single_count > 0:
-                        state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] {single_count} single-turn атак...")
-                        state.current_status = f"[{risk_id}] Gen {cycle_num}: single-turn ({single_count})..."
+                        state.current_status = f"[{risk_id}] Gen {cycle_num}: генерация ({single_count})..."
                         await asyncio.sleep(0.05)
 
-                        if cycle_num == 1:
-                            attacks = await _run_in_bg(
-                                generator.generate, risk_config, count=single_count,
-                                focus_techniques=decision.focus_techniques,
-                                avoid_techniques=decision.avoid_techniques,
-                            )
+                        if is_kb_aware and hall_verifier:
+                            state.log("📚 KB-GEN", f"[{risk_id}] {single_count} KB-aware атак...")
+                            if cycle_num == 1:
+                                attacks = await _run_in_bg(
+                                    hall_verifier.generate_kb_aware_attacks, risk_config, count=single_count,
+                                )
+                            else:
+                                reflect_data = await _run_in_bg(
+                                    hall_verifier.reflect_results, attacks, scored_results, risk_id,
+                                )
+                                state.log("🔄 KB-REFLECT", f"Learnings: {reflect_data.get('learnings', '')[:120]}")
+                                attacks = await _run_in_bg(
+                                    hall_verifier.generate_evolved_attacks,
+                                    attacks, scored_results, reflect_data, risk_config, count=single_count,
+                                )
                         else:
-                            attacks = await _run_in_bg(evolution.get_new_attacks, risk_config, attacks, scored_results)
-                            if not attacks:
-                                attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
+                            state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] {single_count} single-turn атак...")
+                            if cycle_num == 1:
+                                attacks = await _run_in_bg(
+                                    generator.generate, risk_config, count=single_count,
+                                    focus_techniques=decision.focus_techniques,
+                                    avoid_techniques=decision.avoid_techniques,
+                                )
+                            else:
+                                attacks = await _run_in_bg(evolution.get_new_attacks, risk_config, attacks, scored_results)
+                                if not attacks:
+                                    attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
 
                         state.log("✅ СГЕНЕРИРОВАНО", f"{len(attacks) if attacks else 0} атак")
                         if state.should_stop:
@@ -983,8 +1009,16 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             avg_ms = sum(r.response_time_ms for r in raw_results) / max(len(raw_results), 1)
                             state.log("📥 ПОЛУЧЕНО", f"{len(raw_results)} ответов, avg {avg_ms:.0f}ms")
 
-                            state.log("⚖️ SCORING", f"Judge ({factory.judge.model}) оценивает {len(raw_results)} ответов...")
-                            scored_single = await _run_in_bg(scorer.score_batch, attacks, raw_results)
+                            if is_kb_aware and hall_verifier:
+                                state.log("🔍 KB-VERIFY", f"[{risk_id}] Верификация по ground truth...")
+                                scored_single = []
+                                for atk, raw in zip(attacks, raw_results):
+                                    res = await _run_in_bg(hall_verifier.verify_response, atk, raw.response, risk_id)
+                                    res.response_time_ms = raw.response_time_ms
+                                    scored_single.append(res)
+                            else:
+                                state.log("⚖️ SCORING", f"Judge ({factory.judge.model}) оценивает {len(raw_results)} ответов...")
+                                scored_single = await _run_in_bg(scorer.score_batch, attacks, raw_results)
                             if state.should_stop:
                                 state.log("⛔ СТОП", "Остановлено пользователем"); break
                             all_scored.extend(scored_single)
@@ -1084,92 +1118,6 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         state.current_status = f"ОШИБКА: {e}"
         state.is_running = False
 
-
-async def _run_hall_flow(
-    verifier: HallVerifier,
-    runner: AttackRunner,
-    risk_config: RiskConfig,
-    attacks_count: int,
-) -> None:
-    """HALL flow С ЭВОЛЮЦИЕЙ."""
-    risk_id = risk_config.risk_id
-    max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
-    state.log("📚 HALL KB", f"Загружено {verifier.document_count} документов, циклов: {max_cycles}")
-
-    all_hall_attacks: List[Attack] = []
-    all_hall_results: List[AttackResult] = []
-
-    for cycle_num in range(1, max_cycles + 1):
-        if state.should_stop:
-            state.log("⛔ СТОП", "HALL остановлен"); break
-
-        state.log("📚 HALL", f"Gen {cycle_num}: генерация вопросов...")
-        state.current_status = f"[{risk_id}] HALL Gen {cycle_num}: генерация..."
-        await asyncio.sleep(0.05)
-
-        if cycle_num == 1:
-            if risk_config.selected_factors:
-                attacks = await _run_in_bg(
-                    verifier.generate_hall_attacks_by_factors, risk_config, count=attacks_count,
-                )
-            else:
-                attacks = await _run_in_bg(verifier.generate_hall_attacks, count=attacks_count)
-        else:
-            reflect_data = await _run_in_bg(
-                verifier.reflect_hall_results, all_hall_attacks, all_hall_results,
-            )
-            state.log("🔄 HALL REFLECT", f"Паттерны: {reflect_data.get('learnings', '')[:150]}")
-
-            attacks = await _run_in_bg(
-                verifier.generate_evolved_attacks,
-                all_hall_attacks, all_hall_results, reflect_data, count=attacks_count,
-            )
-
-        if not attacks:
-            state.log("❌ ОШИБКА", f"[HALL] Gen {cycle_num}: не удалось сгенерировать")
-            break
-
-        if state.should_stop:
-            state.log("⛔ СТОП", "HALL остановлен"); break
-
-        state.log("📤 ОТПРАВКА", f"[HALL] Gen {cycle_num}: {len(attacks)} вопросов...")
-        state.current_status = f"[{risk_id}] HALL Gen {cycle_num}: отправка..."
-        await asyncio.sleep(0.05)
-        raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
-
-        if state.should_stop:
-            state.log("⛔ СТОП", "HALL остановлен"); break
-
-        state.log("🔍 HALL VERIFY", f"Проверка {len(raw_results)} ответов...")
-        scored = []
-        for attack, raw in zip(attacks, raw_results):
-            result = await _run_in_bg(verifier.verify_response, attack, raw.response)
-            result.response_time_ms = raw.response_time_ms
-            scored.append(result)
-
-        state.all_results.extend(scored)
-        all_hall_attacks.extend(attacks)
-        all_hall_results.extend(scored)
-
-        successful = sum(1 for r in scored if r.is_successful)
-        rate = successful / max(len(scored), 1)
-
-        state.log("📊 РЕЗУЛЬТАТ", f"HALL Gen {cycle_num}: {successful}/{len(scored)} ({rate * 100:.0f}%)")
-
-        cycle = EvolutionCycle(
-            cycle_number=cycle_num, risk_id=risk_id,
-            total_attacks=len(scored), successful_attacks=successful,
-            exploitation_rate=rate,
-            learnings=f"HALL Gen {cycle_num}: {successful} галлюцинаций из {len(scored)}",
-            attack_mode="single_turn",
-        )
-        state.evolution_history.append(cycle)
-        await asyncio.sleep(0.05)
-
-    total_hall = len(all_hall_results)
-    total_succ = sum(1 for r in all_hall_results if r.is_successful)
-    state.log("🏁 HALL ЗАВЕРШЁН", f"Итого: {total_succ}/{total_hall} за {min(cycle_num, max_cycles)} поколений")
-    state.current_status = f"[{risk_id}] HALL: {total_succ}/{total_hall} галлюцинаций"
 
 
 # ═══════════════════════════════════════════════════
