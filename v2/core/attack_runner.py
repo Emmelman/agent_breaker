@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from models.schemas import Attack, AttackResult
+from models.schemas import Attack, AttackResult, MultiTurnChain, MultiTurnResult
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +164,7 @@ class AttackRunner:
         delay: float = _DEFAULT_DELAY,
         conversation_id: Optional[str] = None,
         stop_check: Optional[Any] = None,
+        progress_callback: Optional[Any] = None,
     ) -> List[AttackResult]:
         """
         Отправить пакет атак с задержкой между ними.
@@ -173,6 +174,7 @@ class AttackRunner:
             delay: Задержка между атаками в секундах.
             conversation_id: ID диалога (общий для всех).
             stop_check: Callable → True для остановки.
+            progress_callback: Callable(current, total, attack) для прогресса.
 
         Returns:
             Список результатов.
@@ -183,6 +185,9 @@ class AttackRunner:
             if stop_check and stop_check():
                 logger.info("Batch прерван на атаке %d/%d", i + 1, len(attacks))
                 break
+
+            if progress_callback:
+                progress_callback(i + 1, len(attacks), attack)
 
             result = await self.run_attack(attack, conversation_id=conversation_id)
             results.append(result)
@@ -203,19 +208,22 @@ class AttackRunner:
         self,
         chain: "MultiTurnChain",
         delay: float = 2.0,
-    ) -> "MultiTurnResult":
+        step_callback: Optional[Any] = None,
+    ) -> MultiTurnResult:
         """
         Выполнить multi-turn цепочку.
 
         Первый шаг БЕЗ conversation_id → target создаёт сессию.
         Следующие шаги С реальным conversation_id из ответа.
         """
-        from models.schemas import MultiTurnResult
 
         conversation_id: Optional[str] = None
         step_results: List[AttackResult] = []
 
         for i, step_payload in enumerate(chain.steps):
+            if step_callback:
+                step_callback(chain.id, i + 1, len(chain.steps), step_payload)
+
             attack = Attack(
                 id=f"{chain.id}-step-{i + 1}",
                 risk_id=chain.risk_id,

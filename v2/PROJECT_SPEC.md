@@ -13,6 +13,8 @@
 - **Стек**: Python 3.12, NiceGUI, OpenAI-compatible LLM API (LLM Studio)
 - **Архитектура**: pipeline generate -> run -> score -> evolve с агентным планированием
 - **Multi-model**: разные LLM для генерации (attacker), оценки (judge), ревью (reviewer)
+- **HALL Evolution**: галлюцинации тестируются с эволюцией (reflect → evolved questions)
+- **Progress callbacks**: run_batch и run_chain поддерживают progress_callback/step_callback
 
 ---
 
@@ -39,7 +41,7 @@ v2/
 │   ├── response_scorer.py      # LLM-as-Judge: score, score_batch, score_chain + guards
 │   ├── evolution_engine.py     # Reflect -> Mutate -> Review (multi-model)
 │   ├── attack_planner.py       # Агентный планировщик: observe -> decide -> act
-│   ├── hall_verifier.py        # Верификация галлюцинаций по KB (Type A/B)
+│   ├── hall_verifier.py        # Верификация галлюцинаций по KB (Type A/B) + evolution (reflect/evolve)
 │   ├── knowledge.py            # Загрузка knowledge_base.json (UFR/UMF)
 │   ├── tracing.py              # JSONL трейсинг событий
 │   └── utils.py                # strip_llm_wrapper(), parse_llm_json()

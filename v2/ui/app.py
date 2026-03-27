@@ -64,6 +64,8 @@ class AppState:
         self.max_evolution_cycles: int = 3
         self.hall_kb_path: str = r"C:\Users\Nikita\Documents\Python Projects\chatbot-professor_v2\data\knowledge_base"
         self.planning_mode: str = "auto"  # "auto" | "single" | "multi"
+        self.max_chains: int = 3
+        self.max_steps_per_chain: int = 4
 
         self.risk_configs: Dict[str, Dict[str, Any]] = {}
 
@@ -184,6 +186,17 @@ def page_setup():
                 on_change=lambda e: setattr(state, "planning_mode", e.value),
             )
             ui.label("В режиме 'Авто' система сама решает когда эскалировать на multi-turn").classes("text-xs text-gray-500")
+
+            ui.separator().classes("mt-2")
+            ui.label("Multi-turn настройки:").classes("text-sm font-bold")
+            with ui.row().classes("gap-4 items-center"):
+                ch_slider = ui.slider(min=1, max=10, value=state.max_chains, step=1,
+                                      on_change=lambda e: setattr(state, "max_chains", int(e.value)))
+                ui.label().bind_text_from(ch_slider, "value", backward=lambda v: f"Цепочек: {int(v)}")
+            with ui.row().classes("gap-4 items-center"):
+                st_slider = ui.slider(min=2, max=7, value=state.max_steps_per_chain, step=1,
+                                      on_change=lambda e: setattr(state, "max_steps_per_chain", int(e.value)))
+                ui.label().bind_text_from(st_slider, "value", backward=lambda v: f"Шагов: {int(v)}")
 
         # --- ЗАПУСК ---
         ui.button("ЗАПУСК", on_click=_start_testing, color="red").classes(
@@ -956,7 +969,15 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                         if attacks:
                             state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} атак в target...")
-                            raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
+
+                            def _atk_progress(cur, tot, atk):
+                                state.current_status = f"[{risk_id}] Атака {cur}/{tot}..."
+
+                            raw_results = await runner.run_batch(
+                                attacks, delay=0.5,
+                                stop_check=lambda: state.should_stop,
+                                progress_callback=_atk_progress,
+                            )
                             if state.should_stop:
                                 state.log("⛔ СТОП", "Остановлено пользователем"); break
                             avg_ms = sum(r.response_time_ms for r in raw_results) / max(len(raw_results), 1)
@@ -981,9 +1002,14 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         chains = await _run_in_bg(
                             generator.generate_multi_turn, risk_config, count=multi_chains,
                             focus_techniques=decision.focus_techniques,
+                            max_steps=state.max_steps_per_chain,
                         )
-                        for chain in chains:
-                            chain_result = await runner.run_chain(chain)
+                        def _step_progress(cid, step, total, payload):
+                            state.current_status = f"[{risk_id}] Chain шаг {step}/{total}..."
+
+                        for chain_idx, chain in enumerate(chains):
+                            state.log("🔗 CHAIN", f"{chain_idx + 1}/{len(chains)}: {chain.technique}")
+                            chain_result = await runner.run_chain(chain, step_callback=_step_progress)
                             scored_chain = await _run_in_bg(scorer.score_chain, chain, chain_result)
                             all_scored.extend(scored_chain.steps_results)
 
@@ -1065,54 +1091,85 @@ async def _run_hall_flow(
     risk_config: RiskConfig,
     attacks_count: int,
 ) -> None:
-    """Специальный flow для тестирования галлюцинаций."""
+    """HALL flow С ЭВОЛЮЦИЕЙ."""
     risk_id = risk_config.risk_id
-    state.log("📚 HALL KB", f"Загружено {verifier.document_count} документов")
-    state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] HALL атаки из KB...")
-    state.current_status = f"[{risk_id}] Генерация HALL атак из KB..."
-    await asyncio.sleep(0.05)
+    max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
+    state.log("📚 HALL KB", f"Загружено {verifier.document_count} документов, циклов: {max_cycles}")
 
-    if risk_config.selected_factors:
-        attacks = await _run_in_bg(verifier.generate_hall_attacks_by_factors, risk_config, count=attacks_count)
-    else:
-        attacks = await _run_in_bg(verifier.generate_hall_attacks, count=attacks_count)
+    all_hall_attacks: List[Attack] = []
+    all_hall_results: List[AttackResult] = []
 
-    if not attacks:
-        state.log("❌ ОШИБКА", f"[{risk_id}] Не удалось сгенерировать HALL атаки")
-        state.current_status = f"[{risk_id}] Не удалось сгенерировать HALL атаки"
-        return
+    for cycle_num in range(1, max_cycles + 1):
+        if state.should_stop:
+            state.log("⛔ СТОП", "HALL остановлен"); break
 
-    state.log("📤 ОТПРАВКА", f"[{risk_id}] {len(attacks)} HALL атак в target...")
-    state.current_status = f"[{risk_id}] Отправка {len(attacks)} HALL атак..."
-    await asyncio.sleep(0.05)
-    raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
-    state.log("🔍 HALL VERIFY", f"Проверка {len(raw_results)} ответов по ground truth...")
+        state.log("📚 HALL", f"Gen {cycle_num}: генерация вопросов...")
+        state.current_status = f"[{risk_id}] HALL Gen {cycle_num}: генерация..."
+        await asyncio.sleep(0.05)
 
-    state.current_status = f"[{risk_id}] Верификация ответов через KB..."
-    await asyncio.sleep(0.05)
+        if cycle_num == 1:
+            if risk_config.selected_factors:
+                attacks = await _run_in_bg(
+                    verifier.generate_hall_attacks_by_factors, risk_config, count=attacks_count,
+                )
+            else:
+                attacks = await _run_in_bg(verifier.generate_hall_attacks, count=attacks_count)
+        else:
+            reflect_data = await _run_in_bg(
+                verifier.reflect_hall_results, all_hall_attacks, all_hall_results,
+            )
+            state.log("🔄 HALL REFLECT", f"Паттерны: {reflect_data.get('learnings', '')[:150]}")
 
-    scored = []
-    for attack, raw in zip(attacks, raw_results):
-        result = await _run_in_bg(verifier.verify_response, attack, raw.response)
-        result.response_time_ms = raw.response_time_ms
-        scored.append(result)
+            attacks = await _run_in_bg(
+                verifier.generate_evolved_attacks,
+                all_hall_attacks, all_hall_results, reflect_data, count=attacks_count,
+            )
 
-    state.all_results.extend(scored)
+        if not attacks:
+            state.log("❌ ОШИБКА", f"[HALL] Gen {cycle_num}: не удалось сгенерировать")
+            break
 
-    successful = sum(1 for r in scored if r.is_successful)
-    rate = successful / max(len(scored), 1)
+        if state.should_stop:
+            state.log("⛔ СТОП", "HALL остановлен"); break
 
-    cycle = EvolutionCycle(
-        cycle_number=1, risk_id=risk_id,
-        total_attacks=len(scored), successful_attacks=successful,
-        exploitation_rate=rate,
-        learnings=f"HALL: {successful} галлюцинаций из {len(scored)} вопросов",
-    )
-    state.evolution_history.append(cycle)
+        state.log("📤 ОТПРАВКА", f"[HALL] Gen {cycle_num}: {len(attacks)} вопросов...")
+        state.current_status = f"[{risk_id}] HALL Gen {cycle_num}: отправка..."
+        await asyncio.sleep(0.05)
+        raw_results = await runner.run_batch(attacks, delay=0.5, stop_check=lambda: state.should_stop)
 
-    state.current_status = (
-        f"[{risk_id}] HALL завершён: {successful}/{len(scored)} галлюцинаций ({rate*100:.1f}%)"
-    )
+        if state.should_stop:
+            state.log("⛔ СТОП", "HALL остановлен"); break
+
+        state.log("🔍 HALL VERIFY", f"Проверка {len(raw_results)} ответов...")
+        scored = []
+        for attack, raw in zip(attacks, raw_results):
+            result = await _run_in_bg(verifier.verify_response, attack, raw.response)
+            result.response_time_ms = raw.response_time_ms
+            scored.append(result)
+
+        state.all_results.extend(scored)
+        all_hall_attacks.extend(attacks)
+        all_hall_results.extend(scored)
+
+        successful = sum(1 for r in scored if r.is_successful)
+        rate = successful / max(len(scored), 1)
+
+        state.log("📊 РЕЗУЛЬТАТ", f"HALL Gen {cycle_num}: {successful}/{len(scored)} ({rate * 100:.0f}%)")
+
+        cycle = EvolutionCycle(
+            cycle_number=cycle_num, risk_id=risk_id,
+            total_attacks=len(scored), successful_attacks=successful,
+            exploitation_rate=rate,
+            learnings=f"HALL Gen {cycle_num}: {successful} галлюцинаций из {len(scored)}",
+            attack_mode="single_turn",
+        )
+        state.evolution_history.append(cycle)
+        await asyncio.sleep(0.05)
+
+    total_hall = len(all_hall_results)
+    total_succ = sum(1 for r in all_hall_results if r.is_successful)
+    state.log("🏁 HALL ЗАВЕРШЁН", f"Итого: {total_succ}/{total_hall} за {min(cycle_num, max_cycles)} поколений")
+    state.current_status = f"[{risk_id}] HALL: {total_succ}/{total_hall} галлюцинаций"
 
 
 # ═══════════════════════════════════════════════════
