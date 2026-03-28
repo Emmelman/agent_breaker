@@ -38,7 +38,7 @@ class AttackRunner:
         """Проверить доступность target agent."""
         try:
             async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=10),
+                timeout=aiohttp.ClientTimeout(total=60),
             ) as session:
                 async with session.post(
                     self._target_url,
