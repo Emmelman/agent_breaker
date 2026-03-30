@@ -20,7 +20,7 @@ llm:
       temperature: 0.3
       max_tokens: 1024
     thinker:
-      model: "qwen3-4b"
+      model: "qwen3-8b"
       temperature: 0.3
       max_tokens: 512
 

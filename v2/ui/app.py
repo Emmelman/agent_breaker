@@ -1293,10 +1293,13 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
 
 
+_llm_semaphore = asyncio.Semaphore(1)
+
+
 async def _background_thinker() -> None:
-    """Ouroboros consciousness — фоновый LLM-анализ на лёгкой модели."""
+    """Ouroboros consciousness — фоновый анализ (shared model с семафором)."""
     try:
-        await asyncio.sleep(5)
+        await asyncio.sleep(10)
         if not state.is_running:
             return
 
@@ -1306,7 +1309,7 @@ async def _background_thinker() -> None:
 
         last_count = 0
         while state.is_running:
-            await asyncio.sleep(15)
+            await asyncio.sleep(20)
             if not state.is_running or state.should_stop:
                 break
 
@@ -1318,9 +1321,13 @@ async def _background_thinker() -> None:
             if not risk_id:
                 continue
 
-            insight_text = await _run_in_bg(
-                meta.background_think, risk_id, state.all_results, state.evolution_history,
-            )
+            # Семафор — не занимать LLM если judge/reviewer работает
+            if _llm_semaphore.locked():
+                continue
+            async with _llm_semaphore:
+                insight_text = await _run_in_bg(
+                    meta.background_think, risk_id, state.all_results, state.evolution_history,
+                )
             if insight_text:
                 state.log("💭 THINKING", f"[{risk_id}] {insight_text}")
 
