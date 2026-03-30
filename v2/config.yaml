@@ -19,6 +19,10 @@ llm:
       model: "qwen3-8b"
       temperature: 0.3
       max_tokens: 1024
+    thinker:
+      model: "qwen3-4b"
+      temperature: 0.3
+      max_tokens: 512
 
   # Fallback-модель если роль не настроена
   fallback_model: "gemma-3-12b-it"

@@ -245,6 +245,11 @@ class LLMFactory:
         """LLM для ревью эволюционных мутаций."""
         return self.get_client("reviewer")
 
+    @property
+    def thinker(self) -> LLMClient:
+        """LLM для фонового анализа (лёгкая модель)."""
+        return self.get_client("thinker")
+
     @staticmethod
     def _load_config(path: str) -> dict:
         import yaml

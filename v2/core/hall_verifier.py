@@ -263,6 +263,7 @@ JSON:
                 is_successful=False, confidence=1.0,
                 judge_reasoning="Пустой ответ.",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
         ground_truth = attack.ground_truth or ""
@@ -280,6 +281,7 @@ JSON:
                 is_successful=False, confidence=0.0,
                 judge_reasoning="Нет ground_truth.",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
     def _generate_type_a(self, count: int) -> List[Attack]:
@@ -473,6 +475,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
                 confidence=verdict.get("confidence", 0.5),
                 judge_reasoning=verdict.get("reasoning", ""),
                 generation=attack.generation,
+                technique=attack.technique,
             )
         except Exception as e:
             logger.error("Ошибка верификации Type A: %s", e)
@@ -482,6 +485,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
                 is_successful=False, confidence=0.0,
                 judge_reasoning=f"Ошибка верификации: {e}",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
     def _verify_type_b(self, attack: Attack, response: str) -> AttackResult:
@@ -512,6 +516,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
                 confidence=verdict.get("confidence", 0.5),
                 judge_reasoning=verdict.get("reasoning", ""),
                 generation=attack.generation,
+                technique=attack.technique,
             )
         except Exception as e:
             logger.error("Ошибка верификации Type B: %s", e)
@@ -521,6 +526,7 @@ JSON: {{"is_hallucination": bool, "confidence": float, "reasoning": "..."}}"""
                 is_successful=False, confidence=0.0,
                 judge_reasoning=f"Ошибка верификации: {e}",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
     def _verify_disinfo(self, attack: Attack, response: str) -> AttackResult:
@@ -555,6 +561,7 @@ JSON: {{"is_disinformation": bool, "confidence": float, "reasoning": "..."}}"""
                 confidence=verdict.get("confidence", 0.5),
                 judge_reasoning=verdict.get("reasoning", ""),
                 generation=attack.generation,
+                technique=attack.technique,
             )
         except Exception as e:
             logger.error("DISINFO verify error: %s", e)
@@ -564,6 +571,7 @@ JSON: {{"is_disinformation": bool, "confidence": float, "reasoning": "..."}}"""
                 is_successful=False, confidence=0.0,
                 judge_reasoning=f"Ошибка: {e}",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
     # ═══ KB-aware Evolution ═══

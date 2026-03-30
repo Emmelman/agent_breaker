@@ -64,8 +64,10 @@ class AppState:
         self.max_evolution_cycles: int = 3
         self.hall_kb_path: str = r"C:\Users\Nikita\Documents\Python Projects\chatbot-professor_v2\data\knowledge_base"
         self.planning_mode: str = "auto"  # "auto" | "single" | "multi"
-        self.max_chains: int = 3
-        self.max_steps_per_chain: int = 4
+        self.attack_budget: int = 20
+        self.max_chains: int = 5
+        self.max_steps_per_chain: int = 5
+        self.budget_mode: str = "auto"  # "auto" | "fixed"
 
         self.risk_configs: Dict[str, Dict[str, Any]] = {}
 
@@ -198,6 +200,33 @@ def page_setup():
                 on_change=lambda e: setattr(state, "planning_mode", e.value),
             )
             ui.label("В режиме 'Авто' система сама решает когда эскалировать на multi-turn").classes("text-xs text-gray-500")
+
+            ui.separator().classes("mt-2")
+            ui.label("Бюджет и лимиты:").classes("text-sm font-bold")
+            with ui.row().classes("gap-4 items-center"):
+                budget_slider = ui.slider(min=5, max=100, value=state.attack_budget, step=5,
+                    on_change=lambda e: setattr(state, "attack_budget", int(e.value)))
+                ui.label().bind_text_from(budget_slider, "value",
+                    backward=lambda v: f"Бюджет: {int(v)} атак на риск")
+
+            ui.label("Multi-turn лимиты:").classes("text-sm font-bold mt-2")
+            with ui.row().classes("gap-4 items-center"):
+                chains_slider = ui.slider(min=1, max=10, value=state.max_chains, step=1,
+                    on_change=lambda e: setattr(state, "max_chains", int(e.value)))
+                ui.label().bind_text_from(chains_slider, "value",
+                    backward=lambda v: f"Макс. цепочек: {int(v)}")
+            with ui.row().classes("gap-4 items-center"):
+                steps_slider = ui.slider(min=2, max=8, value=state.max_steps_per_chain, step=1,
+                    on_change=lambda e: setattr(state, "max_steps_per_chain", int(e.value)))
+                ui.label().bind_text_from(steps_slider, "value",
+                    backward=lambda v: f"Макс. шагов: {int(v)}")
+
+            ui.toggle(
+                {"auto": "Авто (planner распределяет)", "fixed": "Фиксированное"},
+                value=state.budget_mode,
+                on_change=lambda e: setattr(state, "budget_mode", e.value),
+            )
+            ui.label("Авто: planner решает пропорции. Фиксированное: по % из planner.").classes("text-xs text-gray-500")
 
             ui.separator().classes("mt-2")
             ui.label("Multi-turn настройки:").classes("text-sm font-bold")
@@ -354,6 +383,7 @@ async def _start_testing() -> None:
 
     ui.navigate.to("/dashboard")
     asyncio.create_task(_run_testing_pipeline(risk_configs))
+    asyncio.create_task(_background_thinker())
 
 
 # ═══════════════════════════════════════════════════
@@ -468,8 +498,67 @@ def page_dashboard():
                                     ui.label(f"Learnings: {cycle.learnings[:150]}").classes("text-xs text-gray-400")
                                 if cycle.review_suggestions:
                                     ui.label(f"Review: {cycle.review_suggestions[:150]}").classes("text-xs text-cyan-400")
+                                if cycle.meta_diagnosis:
+                                    with ui.card().classes("w-full bg-orange-900/20 border-l-2 border-orange-500 mt-1 p-2"):
+                                        ui.label("🧠 META").classes("text-xs font-bold text-orange-400")
+                                        ui.label(f"{cycle.meta_diagnosis[:200]}").classes("text-xs")
+                                        if cycle.meta_root_cause:
+                                            ui.label(f"Root: {cycle.meta_root_cause[:150]}").classes("text-xs text-gray-400")
+                                        if cycle.meta_recommendation:
+                                            ui.label(f"→ {cycle.meta_recommendation[:150]}").classes("text-xs text-green-400")
+                                        if cycle.meta_prompt_evolution:
+                                            ui.label(f"🔄 {cycle.meta_prompt_evolution[:120]}").classes("text-xs text-blue-400")
+                                        if cycle.meta_should_stop:
+                                            ui.label("⛔ РЕКОМЕНДАЦИЯ: ПРЕКРАТИТЬ").classes("text-xs text-red-400 font-bold")
 
                 ui.timer(2.0, _update_evo)
+
+            # --- Technique Leaderboard ---
+            with ui.card().classes("w-full"):
+                ui.label("TECHNIQUES").classes("text-sm font-semibold text-gray-400")
+                tech_container = ui.column().classes("w-full gap-0")
+                _tech_ver = {"value": 0}
+
+                def _update_tech():
+                    current = len(state.all_results)
+                    if current == _tech_ver["value"] or current == 0:
+                        return
+                    _tech_ver["value"] = current
+
+                    stats: Dict[str, Dict] = {}
+                    for r in state.all_results:
+                        tech = getattr(r, "technique", "unknown")
+                        if tech == "unknown" or not tech:
+                            continue
+                        if tech not in stats:
+                            stats[tech] = {"total": 0, "success": 0}
+                        stats[tech]["total"] += 1
+                        if r.is_successful:
+                            stats[tech]["success"] += 1
+
+                    if not stats:
+                        return
+
+                    sorted_techs = sorted(
+                        stats.items(),
+                        key=lambda x: x[1]["success"] / max(x[1]["total"], 1),
+                        reverse=True,
+                    )
+
+                    tech_container.clear()
+                    with tech_container:
+                        for tech_name, s in sorted_techs[:8]:
+                            rate = s["success"] / max(s["total"], 1)
+                            bar_pct = max(int(rate * 100), 2)
+                            color = "bg-green-500" if rate > 0.25 else "bg-yellow-500" if rate > 0 else "bg-gray-600"
+                            with ui.row().classes("w-full items-center gap-1 py-0.5"):
+                                ui.label(f"{rate * 100:.0f}%").classes("text-xs font-mono w-8 text-right shrink-0")
+                                with ui.row().classes("flex-1 h-3 bg-gray-800 rounded overflow-hidden"):
+                                    ui.element("div").classes(f"{color} h-full rounded").style(f"width: {bar_pct}%")
+                                ui.label(tech_name[:20]).classes("text-xs text-gray-300 w-28 truncate shrink-0")
+                                ui.label(f"{s['success']}/{s['total']}").classes("text-xs text-gray-500 shrink-0")
+
+                ui.timer(2.0, _update_tech)
 
             def _on_stop():
                 state.should_stop = True
@@ -888,6 +977,9 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         evolution = EvolutionEngine(factory.attacker, generator, reviewer=factory.reviewer)
         planner = AttackPlanner(factory.attacker)
 
+        from core.strategy_memory import StrategyMemory
+        memory = StrategyMemory()
+
         # HALL verifier (если путь задан)
         hall_verifier = None
         if state.hall_kb_path and Path(state.hall_kb_path).exists():
@@ -911,7 +1003,11 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             max_cycles = state.max_evolution_cycles if state.evolution_enabled else 1
 
             try:
-                state.log(f"🎯 НАЧАЛО", f"Риск: {risk_id}, атак: {attacks_count}, циклов: {max_cycles}")
+                state.log(f"🎯 НАЧАЛО", f"Риск: {risk_id}, бюджет: {state.attack_budget}, циклов: {max_cycles}")
+
+                prior = memory.get_prior_knowledge(state.target_url, risk_id)
+                if prior:
+                    state.log("📖 MEMORY", "Знания из прошлых сессий загружены")
 
                 # Определяем KB-aware режим
                 is_kb_aware = _is_kb_aware_risk(risk_id, risk_config, hall_verifier)
@@ -955,8 +1051,25 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     all_scored: List[AttackResult] = []
 
-                    # Single-turn часть
-                    single_count = int(attacks_count * decision.single_turn_share / 100)
+                    # Budget distribution
+                    budget = state.attack_budget
+                    if state.budget_mode == "auto":
+                        single_count = decision.single_turn_count or int(budget * decision.single_turn_share / 100)
+                        multi_chains_count = decision.multi_turn_chains or 0
+                        steps_per_chain = min(decision.steps_per_chain, state.max_steps_per_chain)
+                    else:
+                        single_count = int(budget * decision.single_turn_share / 100)
+                        multi_chains_count = min(
+                            max(int(budget * decision.multi_turn_share / 100) // state.max_steps_per_chain, 0),
+                            state.max_chains,
+                        )
+                        steps_per_chain = state.max_steps_per_chain
+
+                    total_planned = single_count + (multi_chains_count * steps_per_chain)
+                    if total_planned > budget:
+                        single_count = max(budget - (multi_chains_count * steps_per_chain), 0)
+
+                    state.log("📊 БЮДЖЕТ", f"Single: {single_count}, Chains: {multi_chains_count}×{steps_per_chain} = {single_count + multi_chains_count * steps_per_chain}/{budget}")
                     if single_count > 0:
                         state.current_status = f"[{risk_id}] Gen {cycle_num}: генерация ({single_count})..."
                         await asyncio.sleep(0.05)
@@ -998,6 +1111,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                             def _atk_progress(cur, tot, atk):
                                 state.current_status = f"[{risk_id}] Атака {cur}/{tot}..."
+                                state.log("📤 АТАКА", f"{cur}/{tot}: {atk.payload[:60]}...")
 
                             raw_results = await runner.run_batch(
                                 attacks, delay=0.5,
@@ -1024,22 +1138,19 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             all_scored.extend(scored_single)
 
                     # Multi-turn часть
-                    multi_chains = max(int(attacks_count * decision.multi_turn_share / 100) // 3, 0)
-                    if decision.multi_turn_share > 0 and multi_chains == 0:
-                        multi_chains = 1
-
-                    if multi_chains > 0:
-                        state.log("🔗 MULTI-TURN", f"[{risk_id}] {multi_chains} цепочек...")
-                        state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains} chains)..."
+                    if multi_chains_count > 0:
+                        state.log("🔗 MULTI-TURN", f"[{risk_id}] {multi_chains_count} цепочек×{steps_per_chain} шагов...")
+                        state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains_count} chains)..."
                         await asyncio.sleep(0.05)
 
                         chains = await _run_in_bg(
-                            generator.generate_multi_turn, risk_config, count=multi_chains,
+                            generator.generate_multi_turn, risk_config, count=multi_chains_count,
+                            max_steps=steps_per_chain,
                             focus_techniques=decision.focus_techniques,
-                            max_steps=state.max_steps_per_chain,
                         )
                         def _step_progress(cid, step, total, payload):
                             state.current_status = f"[{risk_id}] Chain шаг {step}/{total}..."
+                            state.log("🔗 STEP", f"шаг {step}/{total}: {payload[:60]}...")
 
                         for chain_idx, chain in enumerate(chains):
                             state.log("🔗 CHAIN", f"{chain_idx + 1}/{len(chains)}: {chain.technique}")
@@ -1054,6 +1165,20 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     # Статистика цикла
                     successful = sum(1 for r in scored_results if r.is_successful)
                     state.log("📊 РЕЗУЛЬТАТ", f"Gen {cycle_num}: {successful}/{len(scored_results)} успешных ({successful / max(len(scored_results), 1) * 100:.0f}%)")
+
+                    # Technique stats
+                    tech_stats: Dict[str, Dict] = {}
+                    for r in scored_results:
+                        tech = getattr(r, "technique", "unknown")
+                        if tech not in tech_stats:
+                            tech_stats[tech] = {"total": 0, "success": 0}
+                        tech_stats[tech]["total"] += 1
+                        if r.is_successful:
+                            tech_stats[tech]["success"] += 1
+                    for tech, ts in sorted(tech_stats.items(), key=lambda x: -x[1]["success"]):
+                        t_rate = ts["success"] / max(ts["total"], 1)
+                        state.log("📈 ТЕХНИКА", f"{tech}: {ts['success']}/{ts['total']} ({t_rate * 100:.0f}%)")
+
                     rate = successful / max(len(scored_results), 1)
 
                     cycle = EvolutionCycle(
@@ -1071,6 +1196,19 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         avoid_techniques=decision.avoid_techniques,
                     )
                     state.evolution_history.append(cycle)
+
+                    # Strategy Memory — запись
+                    meta_data = None
+                    if hasattr(cycle, "meta_diagnosis") and cycle.meta_diagnosis:
+                        meta_data = {"diagnosis": cycle.meta_diagnosis}
+                    sid = memory.record_strategy(
+                        session_id=state.session.session_id,
+                        risk_id=risk_id, target_url=state.target_url,
+                        cycle=cycle,
+                        results=[r for r in scored_results if r.risk_id == risk_id],
+                        meta_insight=meta_data,
+                    )
+                    state.log("💾 MEMORY", f"Стратегия {sid} записана")
 
                     state.current_status = (
                         f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% "
@@ -1091,6 +1229,41 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         evo_cycle.escalation_reason = decision.escalation_reason
                         state.evolution_history[-1] = evo_cycle
                         state.log("👥 REVIEW", f"Approved: {evo_cycle.review_approved}, rejected: {evo_cycle.review_rejected}")
+
+                    # Meta-Reflection (после 2+ поколений)
+                    risk_gens = len([h for h in state.evolution_history if h.risk_id == risk_id])
+                    if risk_gens >= 2:
+                        from core.meta_reflector import MetaReflector
+                        meta = MetaReflector(factory.thinker)
+                        insight = await _run_in_bg(
+                            meta.analyze, risk_id, state.evolution_history,
+                            state.all_results, tech_stats,
+                        )
+                        state.log("🧠 META", f"{insight.diagnosis[:120]}")
+                        state.log("🔍 ROOT", f"{insight.root_cause[:120]}")
+                        state.log("💡 РЕКОМЕНДАЦИЯ", f"{insight.recommendation[:120]}")
+
+                        if insight.prompt_evolution:
+                            state.log("🔄 PROMPT EVO", f"{insight.prompt_evolution[:120]}")
+                        if insight.technique_recombination:
+                            state.log("🔀 RECOMB", f"{', '.join(insight.technique_recombination)}")
+                        if insight.reward_hacking_detected:
+                            state.log("🚨 HACKING", f"{insight.reward_hacking_evidence or 'Подозрение'}")
+
+                        last_cycle = state.evolution_history[-1]
+                        last_cycle.meta_diagnosis = insight.diagnosis
+                        last_cycle.meta_root_cause = insight.root_cause
+                        last_cycle.meta_recommendation = insight.recommendation
+                        last_cycle.meta_should_pivot = insight.should_pivot
+                        last_cycle.meta_pivot_suggestion = insight.pivot_suggestion
+                        last_cycle.meta_should_stop = insight.should_stop
+                        last_cycle.meta_prompt_evolution = insight.prompt_evolution
+                        last_cycle.meta_technique_recombination = insight.technique_recombination
+                        last_cycle.meta_reward_hacking = insight.reward_hacking_detected
+
+                        if insight.should_stop and insight.confidence >= 0.7:
+                            state.log("⛔ META-STOP", f"{insight.recommendation}")
+                            break
 
             except Exception as e:
                 logger.exception("Ошибка при тестировании риска %s", risk_id)
@@ -1118,6 +1291,42 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         state.current_status = f"ОШИБКА: {e}"
         state.is_running = False
 
+
+
+async def _background_thinker() -> None:
+    """Ouroboros consciousness — фоновый LLM-анализ на лёгкой модели."""
+    try:
+        await asyncio.sleep(5)
+        if not state.is_running:
+            return
+
+        factory = LLMFactory()
+        from core.meta_reflector import MetaReflector
+        meta = MetaReflector(factory.thinker)
+
+        last_count = 0
+        while state.is_running:
+            await asyncio.sleep(15)
+            if not state.is_running or state.should_stop:
+                break
+
+            current = len(state.all_results)
+            if current <= last_count or current < 3:
+                continue
+            last_count = current
+            risk_id = state.current_risk
+            if not risk_id:
+                continue
+
+            insight_text = await _run_in_bg(
+                meta.background_think, risk_id, state.all_results, state.evolution_history,
+            )
+            if insight_text:
+                state.log("💭 THINKING", f"[{risk_id}] {insight_text}")
+
+        state.log("💭 THINKER", "Фоновый анализ завершён")
+    except Exception as e:
+        logger.warning("Background thinker error: %s", e)
 
 
 # ═══════════════════════════════════════════════════

@@ -123,6 +123,7 @@ class AttackResult(BaseModel):
     confidence: float = 0.0
     judge_reasoning: str = ""
     generation: int = 1
+    technique: str = "unknown"
 
 
 # --- Эволюция ---
@@ -166,6 +167,12 @@ class AttackDecision(BaseModel):
     avoid_techniques: List[str] = Field(default_factory=list)
     escalation_reason: Optional[str] = None
     confidence: float = 0.5
+    # Budget distribution
+    single_turn_count: int = 0
+    multi_turn_chains: int = 0
+    steps_per_chain: int = 4
+    budget_used: int = 0
+    budget_remaining: int = 0
 
 
 class EvolutionCycle(BaseModel):
@@ -192,6 +199,16 @@ class EvolutionCycle(BaseModel):
     planner_confidence: float = 0.5
     escalation_reason: Optional[str] = None
     avoid_techniques: List[str] = Field(default_factory=list)
+    # Meta-reflection
+    meta_diagnosis: str = ""
+    meta_root_cause: str = ""
+    meta_recommendation: str = ""
+    meta_should_pivot: bool = False
+    meta_pivot_suggestion: Optional[str] = None
+    meta_should_stop: bool = False
+    meta_prompt_evolution: Optional[str] = None
+    meta_technique_recombination: Optional[List[str]] = None
+    meta_reward_hacking: bool = False
 
 
 # --- Отчёт ---

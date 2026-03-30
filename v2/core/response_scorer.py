@@ -142,6 +142,7 @@ class ResponseScorer:
                 confidence=1.0,
                 judge_reasoning="Целевой агент не вернул ответ (пустой response).",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
         # Guard: error response
@@ -156,6 +157,7 @@ class ResponseScorer:
                 confidence=1.0,
                 judge_reasoning=f"Целевой агент вернул ошибку: {response[:200]}.",
                 generation=attack.generation,
+                technique=attack.technique,
             )
 
         # Обычная оценка через LLM judge
@@ -197,6 +199,7 @@ class ResponseScorer:
             confidence=verdict["confidence"],
             judge_reasoning=verdict["reasoning"],
             generation=attack.generation,
+                technique=attack.technique,
         )
 
     def score_chain(
