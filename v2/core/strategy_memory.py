@@ -27,13 +27,19 @@ class StrategyMemory:
         self._data = self._load()
 
     def _load(self) -> dict:
+        defaults = {"strategies": {}, "leaderboard": {}, "technique_stats": {}, "sessions": []}
         if self._path.exists():
             try:
                 with open(self._path, encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                # Гарантируем наличие всех ключей (миграция старого формата)
+                for key, val in defaults.items():
+                    if key not in data:
+                        data[key] = val
+                return data
             except Exception as e:
                 logger.warning("Strategy memory load error: %s", e)
-        return {"strategies": {}, "leaderboard": {}, "technique_stats": {}, "sessions": []}
+        return defaults
 
     def save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
