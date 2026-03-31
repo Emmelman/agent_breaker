@@ -1,24 +1,33 @@
-# Core
-requests==2.31.0
-openai==1.3.7
-aiohttp==3.9.1
+# AGENT-BREAKER v2 — Requirements
+# Python 3.11+
+# Conda env: conda create -n agent_breaker_v2 python=3.11 -y
+# Install: pip install -r requirements.txt
 
-# Data Processing
-pydantic==2.5.2
-pyyaml==6.0.1
-numpy==1.26.4
-scikit-learn==1.3.2
+# === Core ===
+pydantic>=2.5.0
+pyyaml>=6.0
+httpx>=0.27.0          # async HTTP client for target agent
+aiohttp>=3.9.0         # alternative async HTTP
 
-# Code Analysis
-ast-comments==1.2.2
+# === LLM Client ===
+openai>=1.30.0         # OpenAI-compatible API (LLM Studio)
 
-# CLI
-rich==13.7.0
-click==8.1.7
+# === UI ===
+nicegui>=2.5.0         # Web UI framework
 
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
+# === Data ===
+pandas>=2.1.0          # CSV/JSON processing for knowledge base
 
-# Utilities
-python-dotenv==1.0.0
+# === Analysis ===
+scikit-learn>=1.3.0    # TF-IDF diversity scoring (from v1)
+
+# === CLI ===
+rich>=13.7.0           # Beautiful terminal output
+typer>=0.12.0          # CLI framework
+
+# === Testing ===
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# === Logging ===
+loguru>=0.7.0          # Structured logging
