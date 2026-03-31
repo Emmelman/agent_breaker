@@ -383,7 +383,6 @@ async def _start_testing() -> None:
 
     ui.navigate.to("/dashboard")
     asyncio.create_task(_run_testing_pipeline(risk_configs))
-    asyncio.create_task(_background_thinker())
 
 
 # ═══════════════════════════════════════════════════
@@ -970,6 +969,9 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         factory = LLMFactory()
         state.log("🔧 INIT", f"Attacker: {factory.attacker.model}, Judge: {factory.judge.model}, Reviewer: {factory.reviewer.model}")
 
+        # Background thinker с тем же factory (не создавать второй)
+        asyncio.create_task(_background_thinker(factory))
+
         kb = _load_kb()
         generator = AttackGenerator(factory.attacker, kb)
         runner = AttackRunner(target_url=state.target_url)
@@ -1235,10 +1237,11 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     if risk_gens >= 2:
                         from core.meta_reflector import MetaReflector
                         meta = MetaReflector(factory.thinker)
-                        insight = await _run_in_bg(
-                            meta.analyze, risk_id, state.evolution_history,
-                            state.all_results, tech_stats,
-                        )
+                        async with _llm_semaphore:
+                            insight = await _run_in_bg(
+                                meta.analyze, risk_id, state.evolution_history,
+                                state.all_results, tech_stats,
+                            )
                         state.log("🧠 META", f"{insight.diagnosis[:120]}")
                         state.log("🔍 ROOT", f"{insight.root_cause[:120]}")
                         state.log("💡 РЕКОМЕНДАЦИЯ", f"{insight.recommendation[:120]}")
@@ -1296,20 +1299,23 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 _llm_semaphore = asyncio.Semaphore(1)
 
 
-async def _background_thinker() -> None:
-    """Ouroboros consciousness — фоновый анализ (shared model с семафором)."""
+async def _background_thinker(factory: LLMFactory = None) -> None:
+    """Ouroboros consciousness — фоновый анализ (shared factory + семафор)."""
     try:
         await asyncio.sleep(10)
         if not state.is_running:
             return
 
-        factory = LLMFactory()
+        state.log("💭 THINKER", "Фоновый анализ запущен")
+
+        if factory is None:
+            factory = LLMFactory()
         from core.meta_reflector import MetaReflector
         meta = MetaReflector(factory.thinker)
 
         last_count = 0
         while state.is_running:
-            await asyncio.sleep(20)
+            await asyncio.sleep(30)
             if not state.is_running or state.should_stop:
                 break
 
@@ -1334,6 +1340,7 @@ async def _background_thinker() -> None:
         state.log("💭 THINKER", "Фоновый анализ завершён")
     except Exception as e:
         logger.warning("Background thinker error: %s", e)
+        state.log("❌ THINKER", f"Ошибка: {str(e)[:200]}")
 
 
 # ═══════════════════════════════════════════════════
