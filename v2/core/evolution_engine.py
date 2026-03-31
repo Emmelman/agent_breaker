@@ -158,21 +158,54 @@ class EvolutionEngine:
         previous_attacks: List[Attack],
         previous_results: List[AttackResult],
     ) -> List[Attack]:
-        """Получить мутированные атаки нового поколения."""
-        learnings = self._quick_reflect(previous_attacks, previous_results)
+        """Keep best + mutate worst: успешные сохраняются, неуспешные мутируются."""
+        result_map = {r.attack_id: r for r in previous_results}
 
-        new_attacks = self._generator.mutate(
-            attacks=previous_attacks,
-            results=previous_results,
-            learnings=learnings,
-        )
+        # Разделить на успешные и неуспешные
+        successful = []
+        failed = []
+        for atk in previous_attacks:
+            r = result_map.get(atk.id)
+            if r and r.is_successful:
+                successful.append(atk)
+            else:
+                failed.append(atk)
 
-        if new_attacks:
-            new_attacks, _, _, _ = self._review_mutations(
-                new_attacks, learnings, risk_config.risk_id
+        next_gen = max((a.generation for a in previous_attacks), default=1) + 1
+
+        # Keep best: копировать успешные в новое поколение
+        kept = []
+        for atk in successful:
+            kept.append(Attack(
+                id=f"kept-{atk.id}",
+                risk_id=atk.risk_id,
+                technique=atk.technique,
+                payload=atk.payload,
+                target_factors=atk.target_factors,
+                generation=next_gen,
+                ground_truth=atk.ground_truth,
+                source_document=atk.source_document,
+            ))
+
+        # Mutate worst: мутировать только неуспешные
+        mutated = []
+        if failed:
+            learnings = self._quick_reflect(previous_attacks, previous_results)
+            mutated = self._generator.mutate(
+                attacks=failed,
+                results=[r for r in previous_results if not r.is_successful],
+                learnings=learnings,
             )
+            if mutated:
+                mutated, _, _, _ = self._review_mutations(
+                    mutated, learnings, risk_config.risk_id,
+                )
 
-        return new_attacks
+        logger.info(
+            "Evolution: keeping %d successful, mutated %d from %d failed",
+            len(kept), len(mutated), len(failed),
+        )
+        return kept + mutated
 
     def _review_mutations(
         self,
@@ -287,17 +320,35 @@ class EvolutionEngine:
 
         try:
             raw = self._llm.chat(messages, temperature=0.3)
-            return json.loads(strip_llm_wrapper(raw))
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error("Ошибка рефлексии: %s", e)
+            text = strip_llm_wrapper(raw)
+            data = json.loads(text)
+
+            # Гарантировать learnings
+            if isinstance(data, dict) and not data.get("learnings"):
+                for key in ("learning", "insights", "analysis", "summary"):
+                    if key in data and data[key]:
+                        data["learnings"] = str(data[key])
+                        break
+                if not data.get("learnings"):
+                    data["learnings"] = json.dumps(data, ensure_ascii=False)[:300]
+
+            return data
+        except json.JSONDecodeError as e:
+            logger.error("Reflect JSON error: %s. Raw: %s", e, strip_llm_wrapper(raw)[:500])
             return {
-                "effective_techniques": [],
-                "detected_defenses": [],
-                "defense_patterns": [],
-                "weak_spots": [],
-                "bypass_techniques": [],
-                "new_hypotheses": [],
-                "learnings": "Ошибка анализа результатов",
+                "effective_techniques": [], "detected_defenses": [],
+                "defense_patterns": [], "weak_spots": [],
+                "bypass_techniques": [], "new_hypotheses": [],
+                "learnings": f"JSON parse error. Raw: {strip_llm_wrapper(raw)[:200]}",
+                "recommendations": "Повторить анализ",
+            }
+        except Exception as e:
+            logger.error("Reflect error: %s", e)
+            return {
+                "effective_techniques": [], "detected_defenses": [],
+                "defense_patterns": [], "weak_spots": [],
+                "bypass_techniques": [], "new_hypotheses": [],
+                "learnings": f"Ошибка: {type(e).__name__}: {str(e)[:200]}",
                 "recommendations": "Попробовать другие техники",
             }
 

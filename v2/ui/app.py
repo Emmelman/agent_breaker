@@ -82,6 +82,8 @@ class AppState:
         # Контейнеры mitigations для реактивного обновления
         self._mit_containers: Dict[str, tuple] = {}
         self.activity_log: List[Dict[str, str]] = []
+        self.thinker_insights: List[str] = []
+        self.current_prompt_evolution: Optional[str] = None
 
     def log(self, event: str, details: str = "") -> None:
         """Добавить запись в activity log."""
@@ -101,6 +103,8 @@ class AppState:
         self.current_risk = ""
         self.should_stop = False
         self.activity_log = []
+        self.thinker_insights = []
+        self.current_prompt_evolution = None
 
 
 state = AppState()
@@ -1027,7 +1031,13 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     if cycle_num == 1:
                         decision = planner.plan_initial(risk_config)
                     elif state.planning_mode == "auto":
-                        decision = await _run_in_bg(planner.plan_next, risk_config, state.evolution_history, scored_results)
+                        thinker_ctx = ""
+                        if state.thinker_insights:
+                            thinker_ctx = "\n═══ ФОНОВЫЙ АНАЛИЗ ═══\n" + "\n".join(state.thinker_insights[-3:])
+                        decision = await _run_in_bg(
+                            planner.plan_next, risk_config, state.evolution_history, scored_results,
+                            thinker_insights=thinker_ctx,
+                        )
                     elif state.planning_mode == "multi":
                         decision = AttackDecision(
                             attack_mode="multi_turn", single_turn_share=0, multi_turn_share=100,
@@ -1098,11 +1108,15 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                                     generator.generate, risk_config, count=single_count,
                                     focus_techniques=decision.focus_techniques,
                                     avoid_techniques=decision.avoid_techniques,
+                                    prompt_evolution=state.current_prompt_evolution,
                                 )
                             else:
                                 attacks = await _run_in_bg(evolution.get_new_attacks, risk_config, attacks, scored_results)
                                 if not attacks:
-                                    attacks = await _run_in_bg(generator.generate, risk_config, count=single_count)
+                                    attacks = await _run_in_bg(
+                                        generator.generate, risk_config, count=single_count,
+                                        prompt_evolution=state.current_prompt_evolution,
+                                    )
 
                         state.log("✅ СГЕНЕРИРОВАНО", f"{len(attacks) if attacks else 0} атак")
                         if state.should_stop:
@@ -1199,6 +1213,15 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     )
                     state.evolution_history.append(cycle)
 
+                    # Проверка деградации
+                    risk_cycles = [h for h in state.evolution_history if h.risk_id == risk_id]
+                    if len(risk_cycles) >= 2:
+                        prev_rate = risk_cycles[-2].exploitation_rate
+                        curr_rate = risk_cycles[-1].exploitation_rate
+                        if curr_rate < prev_rate and prev_rate > 0:
+                            state.log("⚠️ ДЕГРАДАЦИЯ",
+                                f"Gen {cycle_num}: {curr_rate:.0%} < Gen {cycle_num - 1}: {prev_rate:.0%}")
+
                     # Strategy Memory — запись
                     meta_data = None
                     if hasattr(cycle, "meta_diagnosis") and cycle.meta_diagnosis:
@@ -1248,6 +1271,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                         if insight.prompt_evolution:
                             state.log("🔄 PROMPT EVO", f"{insight.prompt_evolution[:120]}")
+                            state.current_prompt_evolution = insight.prompt_evolution
                         if insight.technique_recombination:
                             state.log("🔀 RECOMB", f"{', '.join(insight.technique_recombination)}")
                         if insight.reward_hacking_detected:
@@ -1336,6 +1360,9 @@ async def _background_thinker(factory: LLMFactory = None) -> None:
                 )
             if insight_text:
                 state.log("💭 THINKING", f"[{risk_id}] {insight_text}")
+                state.thinker_insights.append(f"[{risk_id}] {insight_text}")
+                if len(state.thinker_insights) > 5:
+                    state.thinker_insights = state.thinker_insights[-5:]
 
         state.log("💭 THINKER", "Фоновый анализ завершён")
     except Exception as e:

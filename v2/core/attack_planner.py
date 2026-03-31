@@ -46,6 +46,7 @@ class AttackPlanner:
         risk_config: RiskConfig,
         history: List[EvolutionCycle],
         last_results: List[AttackResult],
+        thinker_insights: str = "",
     ) -> AttackDecision:
         """Агентное решение для следующего поколения."""
         current_rate = history[-1].exploitation_rate if history else 0.0
@@ -90,6 +91,9 @@ JSON:
   "escalation_reason": "причина" или null,
   "confidence": 0.0-1.0
 }}"""
+
+        if thinker_insights:
+            prompt += f"\n\n{thinker_insights}"
 
         messages = [
             {"role": "system", "content": "Ты — стратег red-team. Ответ строго JSON."},

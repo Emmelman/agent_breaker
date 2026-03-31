@@ -94,6 +94,7 @@ class AttackGenerator:
         count: int = 10,
         focus_techniques: Optional[List[str]] = None,
         avoid_techniques: Optional[List[str]] = None,
+        prompt_evolution: Optional[str] = None,
     ) -> List[Attack]:
         """
         Генерирует атаки для данного risk_config.
@@ -134,6 +135,14 @@ class AttackGenerator:
             planner_context += f"\nНЕ ИСПОЛЬЗОВАТЬ (провалились): {', '.join(avoid_techniques)}"
         if planner_context:
             prompt += planner_context
+
+        if prompt_evolution:
+            prompt += f"""
+
+═══ ЭВОЛЮЦИЯ ПОДХОДА (meta-reflection) ═══
+Предыдущий подход не работал. Используй НОВЫЙ подход:
+{prompt_evolution}
+"""
 
         logger.info(
             "Генерация %d атак для %s (факторов: %d, мер без защиты: %d)",
