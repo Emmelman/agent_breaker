@@ -124,6 +124,7 @@ class AttackResult(BaseModel):
     judge_reasoning: str = ""
     generation: int = 1
     technique: str = "unknown"
+    confirmation_level: str = "confirmed"  # "confirmed" | "intent_confirmed" | "requires_trace"
 
 
 # --- Эволюция ---
@@ -225,6 +226,7 @@ class RiskResult(BaseModel):
     confirmed_factors: List[str] = Field(default_factory=list)
     top_evidence: List[AttackResult] = Field(default_factory=list)
     evolution_improvement: Optional[float] = None
+    confirmation_level: str = "confirmed"
 
 
 class SessionReport(BaseModel):
