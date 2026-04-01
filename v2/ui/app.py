@@ -142,6 +142,45 @@ def _build_risk_configs() -> List[RiskConfig]:
     return configs
 
 
+def _render_evo_cycles(cycles: List[EvolutionCycle]) -> None:
+    """Отрисовать список поколений для одного риска."""
+    for cycle in cycles:
+        mode_icons = {"single_turn": "ST", "multi_turn": "MT", "mixed": "MX"}
+        mode = mode_icons.get(cycle.attack_mode, "?")
+        esc = " ESC" if cycle.escalation_reason else ""
+        rate_pct = cycle.exploitation_rate * 100
+        rate_color = "text-green-400" if rate_pct > 25 else "text-yellow-400" if rate_pct > 0 else "text-red-400"
+
+        with ui.expansion(f"Gen {cycle.cycle_number}: {rate_pct:.0f}% [{mode}]{esc}").classes("w-full"):
+            with ui.row().classes("items-center gap-2"):
+                ui.label(f"{rate_pct:.0f}%").classes(f"text-sm font-bold {rate_color}")
+                ui.label(f"{cycle.successful_attacks}/{cycle.total_attacks}").classes("text-xs text-gray-400")
+            if cycle.planner_observation:
+                ui.label(f"OBS: {cycle.planner_observation[:150]}").classes("text-xs text-blue-400")
+            if cycle.planner_hypothesis:
+                ui.label(f"HYP: {cycle.planner_hypothesis[:150]}").classes("text-xs text-purple-400")
+            if cycle.planner_reasoning:
+                ui.label(f"DEC: {cycle.planner_reasoning[:150]}").classes("text-xs text-amber-400")
+            if cycle.escalation_reason:
+                ui.label(f"ESC: {cycle.escalation_reason}").classes("text-xs text-red-400")
+            if cycle.learnings:
+                ui.label(f"Learnings: {cycle.learnings[:200]}").classes("text-xs text-gray-400")
+            if cycle.review_suggestions:
+                ui.label(f"Review: {cycle.review_suggestions[:150]}").classes("text-xs text-cyan-400")
+            if cycle.meta_diagnosis:
+                with ui.card().classes("w-full bg-orange-900/20 border-l-2 border-orange-500 mt-1 p-2"):
+                    ui.label("🧠 META").classes("text-xs font-bold text-orange-400")
+                    ui.label(f"{cycle.meta_diagnosis[:200]}").classes("text-xs")
+                    if cycle.meta_root_cause:
+                        ui.label(f"Root: {cycle.meta_root_cause[:150]}").classes("text-xs text-gray-400")
+                    if cycle.meta_recommendation:
+                        ui.label(f"→ {cycle.meta_recommendation[:150]}").classes("text-xs text-green-400")
+                    if cycle.meta_prompt_evolution:
+                        ui.label(f"🔄 {cycle.meta_prompt_evolution[:120]}").classes("text-xs text-blue-400")
+                    if cycle.meta_should_stop:
+                        ui.label("⛔ РЕКОМЕНДАЦИЯ: ПРЕКРАТИТЬ").classes("text-xs text-red-400 font-bold")
+
+
 def _nav_header(active: str = "") -> None:
     """Общий header с навигацией."""
     with ui.header().classes("bg-gray-900 text-white items-center"):
@@ -459,7 +498,7 @@ def page_dashboard():
                     "grid": {"top": 30, "bottom": 25, "left": 40, "right": 10},
                 }).classes("w-full h-48")
 
-                evo_details = ui.column().classes("w-full gap-1")
+                evo_tabs_container = ui.column().classes("w-full")
                 _evo_count = {"value": 0}
 
                 def _update_evo():
@@ -479,40 +518,26 @@ def page_dashboard():
                     current = len(state.evolution_history)
                     if current == _evo_count["value"]:
                         return
-                    new_cycles = state.evolution_history[_evo_count["value"]:]
                     _evo_count["value"] = current
 
-                    with evo_details:
-                        for cycle in new_cycles:
-                            mode_icons = {"single_turn": "ST", "multi_turn": "MT", "mixed": "MX"}
-                            mode = mode_icons.get(cycle.attack_mode, "?")
-                            esc = " ESC" if cycle.escalation_reason else ""
-                            header = f"Gen {cycle.cycle_number}: {cycle.exploitation_rate:.0%} [{mode}]{esc}"
-                            with ui.expansion(header).classes("w-full"):
-                                if cycle.planner_observation:
-                                    ui.label(f"OBS: {cycle.planner_observation}").classes("text-xs text-blue-400")
-                                if cycle.planner_hypothesis:
-                                    ui.label(f"HYP: {cycle.planner_hypothesis}").classes("text-xs text-purple-400")
-                                if cycle.planner_reasoning:
-                                    ui.label(f"DEC: {cycle.planner_reasoning}").classes("text-xs text-amber-400")
-                                if cycle.escalation_reason:
-                                    ui.label(f"ESC: {cycle.escalation_reason}").classes("text-xs text-red-400")
-                                if cycle.learnings:
-                                    ui.label(f"Learnings: {cycle.learnings[:150]}").classes("text-xs text-gray-400")
-                                if cycle.review_suggestions:
-                                    ui.label(f"Review: {cycle.review_suggestions[:150]}").classes("text-xs text-cyan-400")
-                                if cycle.meta_diagnosis:
-                                    with ui.card().classes("w-full bg-orange-900/20 border-l-2 border-orange-500 mt-1 p-2"):
-                                        ui.label("🧠 META").classes("text-xs font-bold text-orange-400")
-                                        ui.label(f"{cycle.meta_diagnosis[:200]}").classes("text-xs")
-                                        if cycle.meta_root_cause:
-                                            ui.label(f"Root: {cycle.meta_root_cause[:150]}").classes("text-xs text-gray-400")
-                                        if cycle.meta_recommendation:
-                                            ui.label(f"→ {cycle.meta_recommendation[:150]}").classes("text-xs text-green-400")
-                                        if cycle.meta_prompt_evolution:
-                                            ui.label(f"🔄 {cycle.meta_prompt_evolution[:120]}").classes("text-xs text-blue-400")
-                                        if cycle.meta_should_stop:
-                                            ui.label("⛔ РЕКОМЕНДАЦИЯ: ПРЕКРАТИТЬ").classes("text-xs text-red-400 font-bold")
+                    evo_tabs_container.clear()
+                    with evo_tabs_container:
+                        current_risks = set(by_risk.keys())
+                        if len(current_risks) == 1:
+                            rid = list(current_risks)[0]
+                            _render_evo_cycles([c for c in state.evolution_history if c.risk_id == rid])
+                        else:
+                            with ui.tabs().classes("w-full").props("dense") as evo_tabs:
+                                tab_map = {}
+                                for rid in sorted(current_risks):
+                                    rc = [c for c in state.evolution_history if c.risk_id == rid]
+                                    last_rate = rc[-1].exploitation_rate if rc else 0
+                                    tab_map[rid] = ui.tab(f"{rid} {last_rate:.0%}")
+                            first_rid = sorted(current_risks)[0]
+                            with ui.tab_panels(evo_tabs, value=tab_map[first_rid]).classes("w-full p-0"):
+                                for rid in sorted(current_risks):
+                                    with ui.tab_panel(tab_map[rid]):
+                                        _render_evo_cycles([c for c in state.evolution_history if c.risk_id == rid])
 
                 ui.timer(2.0, _update_evo)
 
@@ -1092,15 +1117,42 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                                 attacks = await _run_in_bg(
                                     hall_verifier.generate_kb_aware_attacks, risk_config, count=single_count,
                                 )
+                                # Fallback: KB-aware не дал атак → обычная генерация
+                                if not attacks:
+                                    state.log("⚠️ KB-FALLBACK", f"[{risk_id}] KB-aware пусто, обычная генерация...")
+                                    attacks = await _run_in_bg(
+                                        generator.generate, risk_config, count=single_count,
+                                        focus_techniques=decision.focus_techniques,
+                                    )
                             else:
+                                # Keep best: сохранить успешные
+                                kept_attacks = []
+                                for atk, res in zip(attacks, scored_results):
+                                    if res.is_successful:
+                                        kept_attacks.append(Attack(
+                                            id=f"kept-{atk.id}",
+                                            risk_id=atk.risk_id,
+                                            technique=atk.technique,
+                                            payload=atk.payload,
+                                            target_factors=atk.target_factors,
+                                            generation=atk.generation + 1,
+                                            ground_truth=atk.ground_truth,
+                                            source_document=atk.source_document,
+                                        ))
+
+                                new_count = max(single_count - len(kept_attacks), 1)
+                                state.log("🔄 KB-EVOLVE", f"Kept {len(kept_attacks)} best, generating {new_count} new")
+
                                 reflect_data = await _run_in_bg(
                                     hall_verifier.reflect_results, attacks, scored_results, risk_id,
                                 )
                                 state.log("🔄 KB-REFLECT", f"Learnings: {reflect_data.get('learnings', '')[:120]}")
-                                attacks = await _run_in_bg(
+
+                                new_attacks = await _run_in_bg(
                                     hall_verifier.generate_evolved_attacks,
-                                    attacks, scored_results, reflect_data, risk_config, count=single_count,
+                                    attacks, scored_results, reflect_data, risk_config, count=new_count,
                                 )
+                                attacks = kept_attacks + (new_attacks or [])
                         else:
                             state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] {single_count} single-turn атак...")
                             if cycle_num == 1:
@@ -1273,7 +1325,17 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             state.log("🔄 PROMPT EVO", f"{insight.prompt_evolution[:120]}")
                             state.current_prompt_evolution = insight.prompt_evolution
                         if insight.technique_recombination:
-                            state.log("🔀 RECOMB", f"{', '.join(insight.technique_recombination)}")
+                            recomb = insight.technique_recombination
+                            if isinstance(recomb, str):
+                                recomb_text = recomb
+                            elif isinstance(recomb, list):
+                                if recomb and all(len(str(x)) <= 2 for x in recomb):
+                                    recomb_text = "".join(str(x) for x in recomb)
+                                else:
+                                    recomb_text = ", ".join(str(x) for x in recomb)
+                            else:
+                                recomb_text = str(recomb)
+                            state.log("🔀 RECOMB", recomb_text)
                         if insight.reward_hacking_detected:
                             state.log("🚨 HACKING", f"{insight.reward_hacking_evidence or 'Подозрение'}")
 
