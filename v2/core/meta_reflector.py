@@ -169,14 +169,35 @@ JSON:
         succ = sum(1 for r in results if r.is_successful)
         rate = succ / max(total, 1)
         cycles = len(history)
+        rates = [h.exploitation_rate for h in history]
 
         if rate == 0 and cycles >= 3:
             return MetaInsight(
-                diagnosis=f"Стагнация: {cycles} поколений, 0%",
+                diagnosis=f"Полная стагнация: {cycles} поколений, 0%",
                 root_cause="Все классы атак блокируются",
-                recommendation="Прекратить или сменить подход",
+                recommendation="Прекратить или радикально сменить подход",
                 should_pivot=True, should_stop=True, confidence=0.8,
             )
+
+        if cycles >= 2 and rates[-1] < rates[-2]:
+            drop = rates[-2] - rates[-1]
+            return MetaInsight(
+                diagnosis=f"Деградация: {rates[-2]:.0%} → {rates[-1]:.0%} (−{drop:.0%})",
+                root_cause="Текущая стратегия ухудшает результаты",
+                recommendation="Вернуться к предыдущей стратегии или сменить подход",
+                should_pivot=drop > 0.15,
+                confidence=0.7,
+            )
+
+        if cycles >= 3 and rates[-1] == rates[-2] == rates[-3]:
+            return MetaInsight(
+                diagnosis=f"Стагнация: {rates[-1]:.0%} без изменений за 3 поколения",
+                root_cause="Текущий подход исчерпал потенциал",
+                recommendation="Радикальная смена стратегии",
+                should_pivot=True, should_stop=rates[-1] == 0,
+                confidence=0.8,
+            )
+
         return MetaInsight(diagnosis="Нормальный прогресс", recommendation="Продолжить")
 
     def _format_history(self, history: List[EvolutionCycle]) -> str:

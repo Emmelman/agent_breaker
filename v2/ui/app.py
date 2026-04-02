@@ -68,6 +68,9 @@ class AppState:
         self.max_chains: int = 5
         self.max_steps_per_chain: int = 5
         self.budget_mode: str = "auto"  # "auto" | "fixed"
+        self.auto_stop: bool = True
+        self.max_stagnation_gens: int = 3
+        self.success_threshold: float = 0.9
 
         self.risk_configs: Dict[str, Dict[str, Any]] = {}
 
@@ -243,6 +246,17 @@ def page_setup():
                 on_change=lambda e: setattr(state, "planning_mode", e.value),
             )
             ui.label("В режиме 'Авто' система сама решает когда эскалировать на multi-turn").classes("text-xs text-gray-500")
+
+            ui.separator().classes("mt-2")
+            ui.label("Авто-стоп:").classes("text-sm font-bold")
+            ui.switch("META-STOP решает когда остановиться", value=state.auto_stop,
+                      on_change=lambda e: setattr(state, "auto_stop", e.value))
+            ui.label("Стоп при стагнации, деградации или достижении цели. Слайдер 'Циклов' = макс. лимит.").classes("text-xs text-gray-500")
+            with ui.row().classes("gap-4 items-center"):
+                stag_slider = ui.slider(min=2, max=5, value=state.max_stagnation_gens, step=1,
+                    on_change=lambda e: setattr(state, "max_stagnation_gens", int(e.value)))
+                ui.label().bind_text_from(stag_slider, "value",
+                    backward=lambda v: f"Стагнация: {int(v)} gen → STOP")
 
             ui.separator().classes("mt-2")
             ui.label("Бюджет и лимиты:").classes("text-sm font-bold")
@@ -700,6 +714,43 @@ def page_dashboard():
 
                 ui.timer(2.0, _update_tech)
 
+            # ═══ THINKER INSIGHTS ═══
+            with ui.card().classes("w-full mt-2"):
+                ui.label("THINKER INSIGHTS").classes("text-sm font-semibold text-gray-400")
+                thinker_container = ui.column().classes("w-full gap-1")
+                _thinker_ver = {"value": 0}
+
+                def _update_thinker():
+                    current = len(state.thinker_insights)
+                    if current == _thinker_ver["value"] or current == 0:
+                        return
+                    _thinker_ver["value"] = current
+
+                    thinker_container.clear()
+                    with thinker_container:
+                        for insight in state.thinker_insights:
+                            ts_text = ""
+                            text = insight
+                            if len(insight) > 8 and insight[2] == ":" and insight[5] == ":":
+                                ts_text = insight[:8]
+                                text = insight[9:]
+
+                            risk_color = "text-gray-300"
+                            for tag, col in [("[HALL]", "text-blue-400"), ("[TOXIC]", "text-red-400"),
+                                             ("[DISINFO]", "text-purple-400"), ("[AGENCY]", "text-amber-400"),
+                                             ("[GH_RCE]", "text-cyan-400")]:
+                                if tag in text:
+                                    risk_color = col
+                                    break
+
+                            with ui.row().classes("w-full items-start gap-2 py-0.5"):
+                                if ts_text:
+                                    ui.label(ts_text).classes("text-xs text-gray-500 font-mono shrink-0")
+                                ui.label("💭").classes("text-xs shrink-0")
+                                ui.label(text[:300]).classes(f"text-xs {risk_color}")
+
+                ui.timer(3.0, _update_thinker)
+
 
 # ═══════════════════════════════════════════════════
 #  СТРАНИЦА 3: ОТЧЁТ
@@ -1058,13 +1109,16 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                 attacks: List[Attack] = []
                 scored_results: List[AttackResult] = []
+                risk_gen_counter = 0
 
                 for cycle_num in range(1, max_cycles + 1):
                     if state.should_stop:
                         break
 
+                    risk_gen_counter += 1
+
                     # Planner решает стратегию
-                    if cycle_num == 1:
+                    if risk_gen_counter == 1:
                         decision = planner.plan_initial(risk_config)
                     elif state.planning_mode == "auto":
                         thinker_ctx = ""
@@ -1085,7 +1139,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                             reasoning="Forced single-turn mode",
                         )
 
-                    state.log("🧠 PLANNER", f"Gen {cycle_num}: {decision.attack_mode} ({decision.single_turn_share}/{decision.multi_turn_share})")
+                    state.log("🧠 PLANNER", f"Gen {risk_gen_counter}: {decision.attack_mode} ({decision.single_turn_share}/{decision.multi_turn_share})")
                     if decision.observation:
                         state.log("   👁 OBS", decision.observation[:150])
                     if decision.hypothesis:
@@ -1093,7 +1147,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     state.log("   ⚡ DEC", decision.reasoning[:150])
 
                     state.current_status = (
-                        f"[{risk_id}] Gen {cycle_num}: {decision.attack_mode} — {decision.reasoning[:80]}"
+                        f"[{risk_id}] Gen {risk_gen_counter}: {decision.attack_mode} — {decision.reasoning[:80]}"
                     )
                     await asyncio.sleep(0.05)
 
@@ -1119,12 +1173,12 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     state.log("📊 БЮДЖЕТ", f"Single: {single_count}, Chains: {multi_chains_count}×{steps_per_chain} = {single_count + multi_chains_count * steps_per_chain}/{budget}")
                     if single_count > 0:
-                        state.current_status = f"[{risk_id}] Gen {cycle_num}: генерация ({single_count})..."
+                        state.current_status = f"[{risk_id}] Gen {risk_gen_counter}: генерация ({single_count})..."
                         await asyncio.sleep(0.05)
 
                         if is_kb_aware and hall_verifier:
                             state.log("📚 KB-GEN", f"[{risk_id}] {single_count} KB-aware атак...")
-                            if cycle_num == 1:
+                            if risk_gen_counter == 1:
                                 attacks = await _run_in_bg(
                                     hall_verifier.generate_kb_aware_attacks, risk_config, count=single_count,
                                 )
@@ -1166,7 +1220,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                                 attacks = kept_attacks + (new_attacks or [])
                         else:
                             state.log("⚔️ ГЕНЕРАЦИЯ", f"[{risk_id}] {single_count} single-turn атак...")
-                            if cycle_num == 1:
+                            if risk_gen_counter == 1:
                                 attacks = await _run_in_bg(
                                     generator.generate, risk_config, count=single_count,
                                     focus_techniques=decision.focus_techniques,
@@ -1219,7 +1273,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     # Multi-turn часть
                     if multi_chains_count > 0:
                         state.log("🔗 MULTI-TURN", f"[{risk_id}] {multi_chains_count} цепочек×{steps_per_chain} шагов...")
-                        state.current_status = f"[{risk_id}] Gen {cycle_num}: multi-turn ({multi_chains_count} chains)..."
+                        state.current_status = f"[{risk_id}] Gen {risk_gen_counter}: multi-turn ({multi_chains_count} chains)..."
                         await asyncio.sleep(0.05)
 
                         chains = await _run_in_bg(
@@ -1250,7 +1304,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     # Статистика цикла
                     successful = sum(1 for r in scored_results if r.is_successful)
-                    state.log("📊 РЕЗУЛЬТАТ", f"Gen {cycle_num}: {successful}/{len(scored_results)} успешных ({successful / max(len(scored_results), 1) * 100:.0f}%)")
+                    state.log("📊 РЕЗУЛЬТАТ", f"Gen {risk_gen_counter}: {successful}/{len(scored_results)} успешных ({successful / max(len(scored_results), 1) * 100:.0f}%)")
 
                     # Technique stats
                     tech_stats: Dict[str, Dict] = {}
@@ -1268,7 +1322,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     rate = successful / max(len(scored_results), 1)
 
                     cycle = EvolutionCycle(
-                        cycle_number=cycle_num, risk_id=risk_id,
+                        cycle_number=risk_gen_counter, risk_id=risk_id,
                         total_attacks=len(scored_results), successful_attacks=successful,
                         exploitation_rate=rate,
                         attack_mode=decision.attack_mode,
@@ -1290,7 +1344,23 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         curr_rate = risk_cycles[-1].exploitation_rate
                         if curr_rate < prev_rate and prev_rate > 0:
                             state.log("⚠️ ДЕГРАДАЦИЯ",
-                                f"Gen {cycle_num}: {curr_rate:.0%} < Gen {cycle_num - 1}: {prev_rate:.0%}")
+                                f"Gen {risk_gen_counter}: {curr_rate:.0%} < Gen {risk_gen_counter - 1}: {prev_rate:.0%}")
+
+                    # Авто-стоп проверки
+                    if state.auto_stop:
+                        if rate >= state.success_threshold:
+                            state.log("🎯 GOAL", f"[{risk_id}] Rate {rate:.0%} >= {state.success_threshold:.0%} — цель достигнута!")
+                            break
+                        if len(risk_cycles) >= state.max_stagnation_gens:
+                            recent_rates = [c.exploitation_rate for c in risk_cycles[-state.max_stagnation_gens:]]
+                            if all(r == 0 for r in recent_rates):
+                                state.log("⛔ AUTO-STOP", f"[{risk_id}] 0% за {state.max_stagnation_gens} поколений")
+                                break
+                        if len(risk_cycles) >= 3:
+                            r1, r2, r3 = risk_cycles[-3].exploitation_rate, risk_cycles[-2].exploitation_rate, risk_cycles[-1].exploitation_rate
+                            if r3 < r2 < r1 and r1 > 0:
+                                state.log("⚠️ AUTO-STOP", f"[{risk_id}] Деградация: {r1:.0%}→{r2:.0%}→{r3:.0%}")
+                                break
 
                     # Strategy Memory — запись
                     meta_data = None
@@ -1306,14 +1376,14 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     state.log("💾 MEMORY", f"Стратегия {sid} записана")
 
                     state.current_status = (
-                        f"[{risk_id}] Gen {cycle_num}: rate={rate*100:.1f}% "
+                        f"[{risk_id}] Gen {risk_gen_counter}: rate={rate*100:.1f}% "
                         f"({successful}/{len(scored_results)}) [{decision.attack_mode}]"
                     )
 
                     # Эволюция (если не последний цикл)
                     if cycle_num < max_cycles and state.evolution_enabled and scored_results and attacks:
-                        state.log("🔄 REFLECT", f"[{risk_id}] Анализ результатов Gen {cycle_num}...")
-                        state.current_status = f"[{risk_id}] Эволюция → Gen {cycle_num + 1}..."
+                        state.log("🔄 REFLECT", f"[{risk_id}] Анализ результатов Gen {risk_gen_counter}...")
+                        state.current_status = f"[{risk_id}] Эволюция → Gen {risk_gen_counter + 1}..."
                         await asyncio.sleep(0.05)
                         evo_cycle = await _run_in_bg(evolution.run_cycle, risk_config, attacks, scored_results)
                         evo_cycle.attack_mode = decision.attack_mode
@@ -1440,9 +1510,10 @@ async def _background_thinker(factory: LLMFactory = None) -> None:
                 )
             if insight_text:
                 state.log("💭 THINKING", f"[{risk_id}] {insight_text}")
-                state.thinker_insights.append(f"[{risk_id}] {insight_text}")
-                if len(state.thinker_insights) > 5:
-                    state.thinker_insights = state.thinker_insights[-5:]
+                ts = datetime.now().strftime("%H:%M:%S")
+                state.thinker_insights.append(f"{ts} [{risk_id}] {insight_text}")
+                if len(state.thinker_insights) > 15:
+                    state.thinker_insights = state.thinker_insights[-15:]
 
         state.log("💭 THINKER", "Фоновый анализ завершён")
     except Exception as e:
