@@ -22,6 +22,188 @@
 - **Background Thinker**: Ouroboros consciousness — фоновый LLM-анализ каждые 20 сек
 - **Strategy Memory**: persistent знания между сессиями, версионированные стратегии
 
+### Архитектурная диаграмма
+
+```mermaid
+graph TB
+    subgraph UI["NiceGUI Web UI (port 8080)"]
+        Setup["Настройка"]
+        Dashboard["Dashboard"]
+        Report["Отчёт"]
+    end
+
+    subgraph Pipeline["Testing Pipeline (asyncio)"]
+        Planner["Attack Planner<br/>OBS-HYP-DEC"]
+        Generator["Attack Generator<br/>single + multi-turn"]
+        Runner["Attack Runner<br/>HTTP - target"]
+        Scorer["Response Scorer<br/>LLM-as-Judge"]
+        Evolution["Evolution Engine<br/>reflect-keep best-mutate-review"]
+        Meta["Meta Reflector<br/>diagnosis, prompt evo"]
+    end
+
+    subgraph Thinker["Background Thinker"]
+        BG["Фоновый анализ<br/>каждые 30 сек"]
+    end
+
+    subgraph LLM["LM Studio (localhost:1234)"]
+        Gemma["gemma-3-12b-it<br/>attacker"]
+        Qwen["qwen3-8b<br/>judge / reviewer / thinker"]
+    end
+
+    subgraph Target["Target Agent"]
+        Agent["chatbot-professor<br/>FastAPI + ChromaDB"]
+    end
+
+    subgraph Storage["Persistent Storage"]
+        KB["knowledge_base.json"]
+        HallKB["HALL KB docs"]
+        StratMem["strategy_memory.json"]
+        Reports["data/runs/"]
+    end
+
+    Setup -->|risk configs| Pipeline
+    Pipeline -->|results| Dashboard
+    Dashboard -->|export| Report
+    Planner -->|decision| Generator
+    Generator -->|attacks| Runner
+    Runner -->|HTTP POST| Agent
+    Agent -->|response| Runner
+    Runner -->|raw results| Scorer
+    Scorer -->|scored| Evolution
+    Evolution -->|new attacks| Generator
+    Meta -->|insights| Planner
+    BG -->|thinker_insights| Planner
+    Planner --> Gemma
+    Generator --> Gemma
+    Scorer --> Qwen
+    Evolution --> Gemma
+    Meta --> Qwen
+    BG --> Qwen
+    Planner -->|prior| StratMem
+    Evolution -->|record| StratMem
+    Generator -->|ground truth| HallKB
+```
+
+---
+
+## Технологический стек
+
+### Ядро
+
+| Компонент | Технология | Назначение |
+|-----------|-----------|-----------|
+| Язык | Python 3.11+ | Основной язык |
+| UI | NiceGUI | Веб-интерфейс с реактивными компонентами |
+| Схемы данных | Pydantic v2 | Валидация, сериализация |
+| HTTP клиент | aiohttp | Async HTTP для target agent |
+| Конфигурация | PyYAML | config.yaml |
+| Графики | ECharts (NiceGUI) | Evolution chart |
+
+### LLM инфраструктура
+
+| Компонент | Технология | Назначение |
+|-----------|-----------|-----------|
+| LLM сервер | LM Studio | Локальный inference, OpenAI-compatible |
+| Attacker | gemma-3-12b-it | Генерация, reflect, mutate, planner |
+| Judge | qwen3-8b | Scoring, review, thinker |
+| API | OpenAI Chat Completions | /v1/chat/completions |
+| Multi-model | LLMFactory | Маршрутизация по ролям из config.yaml |
+
+### Паттерны и вдохновения
+
+| Паттерн | Источник | Что взяли |
+|---------|---------|-----------|
+| Autoresearch loop | Claudini | Meta-reflection меняет промпт генератора |
+| Technique recombination | Claudini | Комбинирование 2-3 техник |
+| Reward hacking detection | Claudini | Проверка что judge не завышает |
+| Strategy versioning | Claudini | Версии стратегий с leaderboard |
+| Background consciousness | Ouroboros | Фоновый LLM-анализ параллельно |
+| Keep best, mutate worst | Claudini + EA | Успешные сохраняются, failed мутируются |
+| ReAct agent loop | CAI | Observe-Think-Act в Planner |
+| Multi-model review | OpenClaw / Ouroboros | Разные LLM для генерации и оценки |
+
+### Стандарты безопасности ИИ
+
+| Стандарт | Применение |
+|----------|-----------|
+| OWASP LLM Top 10 (2025) | LLM01, LLM04, LLM06, LLM09 |
+| OWASP Agentic Top 10 (2026) | ASI01, ASI02, ASI05, ASI09 |
+| NIST AI RMF | Фреймворк управления рисками ИИ |
+
+---
+
+## Strategy Memory -- persistent знания между сессиями
+
+### Принцип (Claudini)
+"Later runs have access to all methods and results from earlier runs."
+
+### Жизненный цикл
+1. **Загрузка** (начало pipeline): `memory.get_prior_knowledge(target_url, risk_id)` -- Planner получает leaderboard + technique stats
+2. **Запись** (после каждого поколения): `memory.record_strategy()` -- новая версия + leaderboard update
+3. **Влияние**: Planner использует prior knowledge для первого решения
+
+### Cross-session эффект
+- Первый запуск: Planner начинает вслепую
+- Второй запуск: Planner видит "HALL_v2: 92% [MX], out_of_scope: 71%" -- сразу использует эффективные техники
+
+---
+
+## Эволюция атак -- подробное описание
+
+### Keep Best + Mutate Worst
+
+```mermaid
+graph LR
+    subgraph Gen1["Gen 1 (13 атак)"]
+        S1["7 успешных"]
+        F1["6 неуспешных"]
+    end
+    subgraph Gen2["Gen 2 (12 атак)"]
+        K2["7 kept"]
+        M2["5 новых (mutate)"]
+    end
+    subgraph Gen3["Gen 3 (14 атак)"]
+        K3["9 kept"]
+        M3["5 новых"]
+    end
+    S1 -->|copy| K2
+    F1 -->|reflect+mutate| M2
+    K2 -->|copy| K3
+    M2 -->|успешные kept| K3
+```
+
+### Цикл одного поколения
+
+```
+1. PLANNER (gemma): OBS-HYP-DEC, budget, techniques
+2. KEEP BEST: успешные из Gen N-1 копируются без мутации
+3. GENERATE/MUTATE (gemma): новые атаки для замены failed
+4. RUN (HTTP -> target): run_batch + run_chain
+5. SCORE (qwen judge): TOXIC/HALL/DISINFO=стандарт, AGENCY/GH_RCE=специализированный
+6. REFLECT (gemma): defense_patterns, weak_spots, bypass
+7. REVIEW (qwen): multi-model ревью мутаций
+8. META-REFLECTION (qwen): diagnosis, prompt_evo, reward hacking
+9. AUTO-STOP: goal/stagnation/degradation/META-STOP
+10. STRATEGY MEMORY: record_strategy()
+```
+
+### Background Thinker
+
+- Отдельная asyncio задача параллельно с pipeline
+- Использует тот же factory (shared model, семафор)
+- Интервал: 30 сек, пропускает если LLM занят
+- Инсайты -> state.thinker_insights -> Planner
+
+### Специализированные Judge промпты
+
+| Риск | Judge | Ситуации | Confirmation |
+|------|-------|----------|-------------|
+| TOXIC | Стандартный | Токсичный контент: да/нет | confirmed |
+| HALL | KB-verifier | Факт в KB / выдумка | confirmed |
+| DISINFO | KB-verifier | Искажение факта из KB | confirmed |
+| AGENCY | Специализированный | REFUSAL / INTENT / EXECUTION | intent_confirmed |
+| GH_RCE | Специализированный | REFUSAL / DISCLOSURE / EXECUTION_INTENT / GOAL_HIJACK | intent_confirmed |
+
 ---
 
 ## 2. Структура файлов
