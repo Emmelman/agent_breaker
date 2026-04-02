@@ -271,16 +271,6 @@ def page_setup():
             )
             ui.label("Авто: planner решает пропорции. Фиксированное: по % из planner.").classes("text-xs text-gray-500")
 
-            ui.separator().classes("mt-2")
-            ui.label("Multi-turn настройки:").classes("text-sm font-bold")
-            with ui.row().classes("gap-4 items-center"):
-                ch_slider = ui.slider(min=1, max=10, value=state.max_chains, step=1,
-                                      on_change=lambda e: setattr(state, "max_chains", int(e.value)))
-                ui.label().bind_text_from(ch_slider, "value", backward=lambda v: f"Цепочек: {int(v)}")
-            with ui.row().classes("gap-4 items-center"):
-                st_slider = ui.slider(min=2, max=7, value=state.max_steps_per_chain, step=1,
-                                      on_change=lambda e: setattr(state, "max_steps_per_chain", int(e.value)))
-                ui.label().bind_text_from(st_slider, "value", backward=lambda v: f"Шагов: {int(v)}")
 
         # --- ЗАПУСК ---
         ui.button("ЗАПУСК", on_click=_start_testing, color="red").classes(
@@ -498,10 +488,7 @@ def page_dashboard():
                     "grid": {"top": 30, "bottom": 25, "left": 40, "right": 10},
                 }).classes("w-full h-48")
 
-                evo_tabs_container = ui.column().classes("w-full")
-                _evo_count = {"value": 0}
-
-                def _update_evo():
+                def _update_evo_chart():
                     if not state.evolution_history:
                         return
                     by_risk: Dict[str, List[float]] = {}
@@ -515,78 +502,7 @@ def page_dashboard():
                     ]
                     evo_chart.update()
 
-                    current = len(state.evolution_history)
-                    if current == _evo_count["value"]:
-                        return
-                    _evo_count["value"] = current
-
-                    evo_tabs_container.clear()
-                    with evo_tabs_container:
-                        current_risks = set(by_risk.keys())
-                        if len(current_risks) == 1:
-                            rid = list(current_risks)[0]
-                            _render_evo_cycles([c for c in state.evolution_history if c.risk_id == rid])
-                        else:
-                            with ui.tabs().classes("w-full").props("dense") as evo_tabs:
-                                tab_map = {}
-                                for rid in sorted(current_risks):
-                                    rc = [c for c in state.evolution_history if c.risk_id == rid]
-                                    last_rate = rc[-1].exploitation_rate if rc else 0
-                                    tab_map[rid] = ui.tab(f"{rid} {last_rate:.0%}")
-                            first_rid = sorted(current_risks)[0]
-                            with ui.tab_panels(evo_tabs, value=tab_map[first_rid]).classes("w-full p-0"):
-                                for rid in sorted(current_risks):
-                                    with ui.tab_panel(tab_map[rid]):
-                                        _render_evo_cycles([c for c in state.evolution_history if c.risk_id == rid])
-
-                ui.timer(2.0, _update_evo)
-
-            # --- Technique Leaderboard ---
-            with ui.card().classes("w-full"):
-                ui.label("TECHNIQUES").classes("text-sm font-semibold text-gray-400")
-                tech_container = ui.column().classes("w-full gap-0")
-                _tech_ver = {"value": 0}
-
-                def _update_tech():
-                    current = len(state.all_results)
-                    if current == _tech_ver["value"] or current == 0:
-                        return
-                    _tech_ver["value"] = current
-
-                    stats: Dict[str, Dict] = {}
-                    for r in state.all_results:
-                        tech = getattr(r, "technique", "unknown")
-                        if tech == "unknown" or not tech:
-                            continue
-                        if tech not in stats:
-                            stats[tech] = {"total": 0, "success": 0}
-                        stats[tech]["total"] += 1
-                        if r.is_successful:
-                            stats[tech]["success"] += 1
-
-                    if not stats:
-                        return
-
-                    sorted_techs = sorted(
-                        stats.items(),
-                        key=lambda x: x[1]["success"] / max(x[1]["total"], 1),
-                        reverse=True,
-                    )
-
-                    tech_container.clear()
-                    with tech_container:
-                        for tech_name, s in sorted_techs[:8]:
-                            rate = s["success"] / max(s["total"], 1)
-                            bar_pct = max(int(rate * 100), 2)
-                            color = "bg-green-500" if rate > 0.25 else "bg-yellow-500" if rate > 0 else "bg-gray-600"
-                            with ui.row().classes("w-full items-center gap-1 py-0.5"):
-                                ui.label(f"{rate * 100:.0f}%").classes("text-xs font-mono w-8 text-right shrink-0")
-                                with ui.row().classes("flex-1 h-3 bg-gray-800 rounded overflow-hidden"):
-                                    ui.element("div").classes(f"{color} h-full rounded").style(f"width: {bar_pct}%")
-                                ui.label(tech_name[:20]).classes("text-xs text-gray-300 w-28 truncate shrink-0")
-                                ui.label(f"{s['success']}/{s['total']}").classes("text-xs text-gray-500 shrink-0")
-
-                ui.timer(2.0, _update_tech)
+                ui.timer(2.0, _update_evo_chart)
 
             def _on_stop():
                 state.should_stop = True
@@ -699,6 +615,90 @@ def page_dashboard():
 
             ui.timer(0.5, _update_log)
             ui.timer(0.5, _update_activity)
+
+            # ═══ EVO DETAILS — под логами ═══
+            with ui.card().classes("w-full mt-2"):
+                ui.label("EVOLUTION DETAILS").classes("text-sm font-semibold text-gray-400")
+                evo_details_container = ui.column().classes("w-full")
+                _evo_detail_count = {"value": 0}
+
+                def _update_evo_details():
+                    if not state.evolution_history:
+                        return
+                    current = len(state.evolution_history)
+                    if current == _evo_detail_count["value"]:
+                        return
+                    _evo_detail_count["value"] = current
+
+                    by_risk: Dict[str, List] = {}
+                    for c in state.evolution_history:
+                        by_risk.setdefault(c.risk_id, []).append(c)
+
+                    evo_details_container.clear()
+                    with evo_details_container:
+                        if len(by_risk) <= 1:
+                            for rid, cycles in by_risk.items():
+                                _render_evo_cycles(cycles)
+                        else:
+                            with ui.tabs().classes("w-full").props("dense") as evo_tabs:
+                                tab_map = {}
+                                for rid in sorted(by_risk.keys()):
+                                    last_rate = by_risk[rid][-1].exploitation_rate
+                                    tab_map[rid] = ui.tab(f"{rid} {last_rate:.0%}")
+                            first_rid = sorted(by_risk.keys())[0]
+                            with ui.tab_panels(evo_tabs, value=tab_map[first_rid]).classes("w-full p-0"):
+                                for rid in sorted(by_risk.keys()):
+                                    with ui.tab_panel(tab_map[rid]):
+                                        _render_evo_cycles(by_risk[rid])
+
+                ui.timer(2.0, _update_evo_details)
+
+            # ═══ TECHNIQUES — под EVO details ═══
+            with ui.card().classes("w-full mt-2"):
+                ui.label("TECHNIQUES").classes("text-sm font-semibold text-gray-400")
+                tech_container = ui.column().classes("w-full gap-0")
+                _tech_ver = {"value": 0}
+
+                def _update_tech():
+                    current = len(state.all_results)
+                    if current == _tech_ver["value"] or current == 0:
+                        return
+                    _tech_ver["value"] = current
+
+                    stats: Dict[str, Dict] = {}
+                    for r in state.all_results:
+                        tech = getattr(r, "technique", "unknown")
+                        if tech == "unknown" or not tech:
+                            continue
+                        if tech not in stats:
+                            stats[tech] = {"total": 0, "success": 0}
+                        stats[tech]["total"] += 1
+                        if r.is_successful:
+                            stats[tech]["success"] += 1
+
+                    if not stats:
+                        return
+
+                    sorted_techs = sorted(
+                        stats.items(),
+                        key=lambda x: x[1]["success"] / max(x[1]["total"], 1),
+                        reverse=True,
+                    )
+
+                    tech_container.clear()
+                    with tech_container:
+                        for tech_name, s in sorted_techs[:10]:
+                            rate = s["success"] / max(s["total"], 1)
+                            bar_pct = max(int(rate * 100), 2)
+                            color = "bg-green-500" if rate > 0.25 else "bg-yellow-500" if rate > 0 else "bg-gray-600"
+                            with ui.row().classes("w-full items-center gap-1 py-0.5"):
+                                ui.label(f"{rate * 100:.0f}%").classes("text-xs font-mono w-8 text-right shrink-0")
+                                with ui.row().classes("flex-1 h-3 bg-gray-800 rounded overflow-hidden"):
+                                    ui.element("div").classes(f"{color} h-full rounded").style(f"width: {bar_pct}%")
+                                ui.label(tech_name[:25]).classes("text-xs text-gray-300 w-36 truncate shrink-0")
+                                ui.label(f"{s['success']}/{s['total']}").classes("text-xs text-gray-500 shrink-0")
+
+                ui.timer(2.0, _update_tech)
 
 
 # ═══════════════════════════════════════════════════
