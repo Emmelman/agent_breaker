@@ -61,7 +61,7 @@ class AppState:
         self.llm_base_url: str = "http://127.0.0.1:1234"
         self.llm_model: str = "gemma-3-12b-it"
         self.evolution_enabled: bool = True
-        self.max_evolution_cycles: int = 3
+        self.max_evolution_cycles: int = 10
         self.hall_kb_path: str = r"C:\Users\Nikita\Documents\Python Projects\chatbot-professor_v2\data\knowledge_base"
         self.planning_mode: str = "auto"  # "auto" | "single" | "multi"
         self.attack_budget: int = 20
@@ -235,7 +235,7 @@ def page_setup():
             with ui.row().classes("gap-4 items-center"):
                 ui.switch("Включить эволюцию", value=state.evolution_enabled,
                           on_change=lambda e: setattr(state, "evolution_enabled", e.value))
-                slider = ui.slider(min=1, max=5, value=state.max_evolution_cycles, step=1,
+                slider = ui.slider(min=1, max=15, value=state.max_evolution_cycles, step=1,
                                    on_change=lambda e: setattr(state, "max_evolution_cycles", int(e.value)))
                 ui.label().bind_text_from(slider, "value", backward=lambda v: f"Циклов: {int(v)}")
 
