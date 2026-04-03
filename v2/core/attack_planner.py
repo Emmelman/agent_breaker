@@ -49,12 +49,15 @@ class AttackPlanner:
         thinker_insights: str = "",
     ) -> AttackDecision:
         """Агентное решение для следующего поколения."""
-        current_rate = history[-1].exploitation_rate if history else 0.0
-        previous_rate = history[-2].exploitation_rate if len(history) >= 2 else 0.0
-        trend = current_rate - previous_rate
-        cycle_num = len(history) + 1
+        # Фильтруем историю по текущему риску
+        risk_history = [h for h in history if h.risk_id == risk_config.risk_id]
 
-        history_summary = self._format_history(history)
+        current_rate = risk_history[-1].exploitation_rate if risk_history else 0.0
+        previous_rate = risk_history[-2].exploitation_rate if len(risk_history) >= 2 else 0.0
+        trend = current_rate - previous_rate
+        cycle_num = len(risk_history) + 1
+
+        history_summary = self._format_history(risk_history)
 
         prompt = f"""Ты — стратег red-team операций. Проанализируй и выбери стратегию.
 
