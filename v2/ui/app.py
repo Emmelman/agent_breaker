@@ -1401,6 +1401,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         evo_cycle.planner_hypothesis = decision.hypothesis
                         evo_cycle.planner_confidence = decision.confidence
                         evo_cycle.escalation_reason = decision.escalation_reason
+                        evo_cycle.cycle_number = risk_gen_counter
                         state.evolution_history[-1] = evo_cycle
                         state.log("👥 REVIEW", f"Approved: {evo_cycle.review_approved}, rejected: {evo_cycle.review_rejected}")
 
