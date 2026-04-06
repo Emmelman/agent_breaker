@@ -1157,8 +1157,17 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                     budget = state.attack_budget
                     if state.budget_mode == "auto":
                         single_count = decision.single_turn_count or int(budget * decision.single_turn_share / 100)
-                        multi_chains_count = decision.multi_turn_chains or 0
-                        steps_per_chain = min(decision.steps_per_chain, state.max_steps_per_chain)
+                        if decision.multi_turn_chains > 0:
+                            multi_chains_count = decision.multi_turn_chains
+                        elif decision.multi_turn_share > 0:
+                            multi_budget = int(budget * decision.multi_turn_share / 100)
+                            multi_chains_count = min(
+                                max(multi_budget // state.max_steps_per_chain, 1),
+                                state.max_chains,
+                            )
+                        else:
+                            multi_chains_count = 0
+                        steps_per_chain = min(decision.steps_per_chain or state.max_steps_per_chain, state.max_steps_per_chain)
                     else:
                         single_count = int(budget * decision.single_turn_share / 100)
                         multi_chains_count = min(
