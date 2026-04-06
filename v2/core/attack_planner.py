@@ -51,6 +51,7 @@ class AttackPlanner:
         """Агентное решение для следующего поколения."""
         # Фильтруем историю по текущему риску
         risk_history = [h for h in history if h.risk_id == risk_config.risk_id]
+        risk_results = [r for r in last_results if r.risk_id == risk_config.risk_id]
 
         current_rate = risk_history[-1].exploitation_rate if risk_history else 0.0
         previous_rate = risk_history[-2].exploitation_rate if len(risk_history) >= 2 else 0.0
@@ -70,7 +71,7 @@ class AttackPlanner:
 {history_summary}
 
 Последние результаты:
-{self._format_last_results(last_results)}
+{self._format_last_results(risk_results)}
 
 Шаг 1 — OBSERVATION: Что видишь в данных?
 Шаг 2 — HYPOTHESIS: Какую гипотезу проверяешь?
