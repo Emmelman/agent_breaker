@@ -40,7 +40,10 @@
       "Bash(wc -l v2/ui/app.py v2/core/*.py v2/models/schemas.py)",
       "Bash(bash v2/verify_invariants.sh)",
       "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"import py_compile; py_compile.compile\\(''v2/ui/app.py'', doraise=True\\); py_compile.compile\\(''v2/core/attack_runner.py'', doraise=True\\); py_compile.compile\\(''v2/core/attack_generator.py'', doraise=True\\); py_compile.compile\\(''v2/core/hall_verifier.py'', doraise=True\\); print\\(''Syntax OK''\\)\")",
-      "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"import py_compile; py_compile.compile\\(''v2/ui/app.py'', doraise=True\\); py_compile.compile\\(''v2/core/hall_verifier.py'', doraise=True\\); print\\(''Syntax OK''\\)\")"
+      "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"import py_compile; py_compile.compile\\(''v2/ui/app.py'', doraise=True\\); py_compile.compile\\(''v2/core/hall_verifier.py'', doraise=True\\); print\\(''Syntax OK''\\)\")",
+      "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"open\\(''v2/PROJECT_SPEC.md''\\).read\\(\\); print\\(''OK''\\)\")",
+      "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"open\\(''v2/PROJECT_SPEC.md'', encoding=''utf-8''\\).read\\(\\); print\\(''OK''\\)\")",
+      "Bash(/c/Users/Nikita/anaconda3/envs/agent_breaker/python.exe -c \"import py_compile; py_compile.compile\\(''v2/core/attack_planner.py'', doraise=True\\); print\\(''OK''\\)\")"
     ]
   }
 }
