@@ -40,6 +40,7 @@ class SessionCompactor:
         evolution_history: List[EvolutionCycle],
         all_results: List[AttackResult],
         thinker_insights: Optional[List[str]] = None,
+        agent_version: str = "",
     ) -> dict:
         """Собрать компакт.
 
@@ -67,6 +68,7 @@ class SessionCompactor:
         return {
             "session_id": session_id,
             "agent_id": agent_id,
+            "version": agent_version,
             "target_url": target_url,
             "started_at": started_at.isoformat(),
             "finished_at": finished_at.isoformat(),

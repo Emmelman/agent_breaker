@@ -70,6 +70,9 @@ class MemoryGuard:
         out = dict(compact)
 
         out["summary"] = self._clean_string(compact.get("summary", ""))
+        # Версия — небольшая строка, просто чистим
+        if "version" in compact:
+            out["version"] = self._clean_string(str(compact.get("version", "")))[:64]
         out["feedback"] = self._filter_list(compact.get("feedback", []), self._max_feedback)
         out["general_lessons"] = self._filter_list(compact.get("general_lessons", []), self._max_lessons)
 

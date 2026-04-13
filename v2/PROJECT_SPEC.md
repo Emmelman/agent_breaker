@@ -132,19 +132,37 @@ graph TB
 
 ---
 
-## Strategy Memory -- persistent знания между сессиями
+## Memory System -- трёхуровневая persistent память (Ouroboros pattern)
 
 ### Принцип (Claudini)
 "Later runs have access to all methods and results from earlier runs."
 
+### Три уровня
+1. **Session (working memory)** — runtime-состояние в `AppState`
+   (`evolution_history`, `all_results`, `thinker_insights`).
+2. **Agent (episodic memory)** — файл `data/memory/agents/<agent_id>.json`
+   (сессии со `version`, `technique_stats`, `risk_profile`, `feedback`).
+3. **Global (semantic memory)** — файл `data/memory/global.json`
+   (cross-agent `technique_stats`, per-agent-per-risk `best_rate`, `general_lessons`).
+
 ### Жизненный цикл
-1. **Загрузка** (начало pipeline): `memory.get_prior_knowledge(target_url, risk_id)` -- Planner получает leaderboard + technique stats
-2. **Запись** (после каждого поколения): `memory.record_strategy()` -- новая версия + leaderboard update
-3. **Влияние**: Planner использует prior knowledge для первого решения
+1. **Start**: `MemorySystem(agent_id, version)` загружает agent/global с диска.
+   `current_version` хранит значение **с прошлой сессии** (не перезаписывается
+   до коммита — это важно для regression-детекции).
+2. **Plan**: `plan_initial()` выбирает один из 4 сценариев старта
+   (FRESH / INFORMED / PRECISION / REGRESSION) на основе `agent_memory` +
+   `global_memory`. `plan_next()` получает сжатый prior-блок в промпт.
+3. **Commit (в конце сессии)**: `SessionCompactor` сводит runtime в компакт,
+   `MemoryGuard` санитизирует (jailbreak-маркеры, control chars, лимиты),
+   `memory.commit_session()` пишет и в agent, и в global.
 
 ### Cross-session эффект
-- Первый запуск: Planner начинает вслепую
-- Второй запуск: Planner видит "HALL_v2: 92% [MX], out_of_scope: 71%" -- сразу использует эффективные техники
+- Первая сессия агента X: FRESH START, широкая разведка.
+- Вторая сессия того же агента (та же версия): PRECISION START —
+  70% на проверенные техники.
+- Свежий агент Y, но есть данные о других агентах: INFORMED START —
+  применяем top-техники из global.
+- Та же версия тестируется повторно → PRECISION; новая версия v2.0 → REGRESSION.
 
 ---
 
@@ -338,30 +356,38 @@ _start_testing()
   └─ _background_thinker()              # параллельная задача (Ouroboros)
        │
        ├─ LLMFactory() -> attacker, judge, reviewer (thinker = judge с семафором)
-       ├─ StrategyMemory() -> загрузка prior knowledge
+       ├─ MemorySystem(agent_id=...) -> AgentMemory + GlobalMemory (Ouroboros 3 levels)
        ├─ HallVerifier (если hall_kb_path задан)
        │
        └─ for risk_config in risk_configs:
-            ├─ prior = memory.get_prior_knowledge()
             ├─ try/except/continue (graceful)
             │
             ├─ _is_kb_aware_risk()? -> KB-aware генерация + верификация
             │
             └─ Обычный flow:
                  └─ for cycle_num in 1..max_cycles:
-                      ├─ Planner: plan_initial / plan_next (+ budget + prior)
+                      ├─ Planner (адаптивный старт):
+                      │    ├─ plan_initial(risk, agent_memory, global_memory, version):
+                      │    │    ├─ FRESH START: нет знаний -> разведка single-turn
+                      │    │    ├─ INFORMED START: global-знания -> top-техники + разведка
+                      │    │    ├─ PRECISION START: знаем агента -> best strategy + exploration
+                      │    │    └─ REGRESSION START: новая версия -> проверка починили ли
+                      │    └─ plan_next(..., agent_memory) с prior-блоком в промпте
                       ├─ Budget: single_count + chains × steps <= budget
                       ├─ Single-turn: generate -> run_batch(progress_callback) -> score_batch
                       ├─ Multi-turn: generate_multi_turn(max_steps) -> run_chain(step_callback) -> score_chain
                       ├─ Technique stats -> Activity Log
                       ├─ Статистика -> EvolutionCycle -> state.evolution_history
                       ├─ Evolution: reflect -> mutate -> review
-                      ├─ MetaReflector.analyze() (если >=2 gen)
-                      │    ├─ diagnosis, root_cause, recommendation
-                      │    ├─ prompt_evolution, technique_recombination
-                      │    ├─ reward_hacking_detection
-                      │    └─ should_pivot / should_stop -> break
-                      └─ memory.record_strategy()
+                      └─ MetaReflector.analyze() (если >=2 gen)
+                           ├─ diagnosis, root_cause, recommendation
+                           ├─ prompt_evolution, technique_recombination
+                           ├─ reward_hacking_detection
+                           └─ should_pivot / should_stop -> break
+       │
+       └─ После всех рисков: SessionCompactor -> MemoryGuard -> memory.commit_session
+            ├─ agent file: sessions (with version), technique_stats, risk_profile, feedback
+            └─ global file: per-agent per-risk rates, cross-agent technique_stats
 ```
 
 Все LLM-вызовы через `_run_in_bg()` (ThreadPoolExecutor) — не блокируют UI.
@@ -594,6 +620,23 @@ Agent-Breaker тестирует ИИ-агентов как чёрный ящи�
 | DISINFO | LLM09 (Misinformation) | ASI09 (Trust Exploitation) |
 | AGENCY | LLM06 (Excessive Agency) | ASI01, ASI02 (Goal Hijack, Tool Misuse) |
 | GH_RCE | LLM04 (Insecure Output) | ASI01, ASI02, ASI05 (Goal Hijack, Tool Misuse, Code Execution) |
+
+### Regression Testing
+
+При тестировании новой версии того же агента (v1.0 → v2.0) система
+автоматически включает regression-режим:
+
+1. `plan_initial()` детектирует смену версии через сравнение `state.agent_version`
+   с сохранённым `agent_memory.current_version` (сравнение — на СТАРОМ значении
+   до коммита новой сессии).
+2. REGRESSION START: 80% бюджета идёт на те техники, которые пробивали
+   прошлую версию (из `agent_memory.get_best_strategy(risk_id)`);
+   20% — на разведку специфичных для новой версии защит.
+3. В `RiskResult.regression_data` сохраняются `{old_version, new_version,
+   old_rate, new_rate, change, status}` (`improved` / `degraded` / `stable`).
+4. UI Report выводит цветную плашку (✅ FIXED / ❌ WORSE / ➡️ STABLE).
+5. В Full Report MD добавляется отдельная секция **Regression Report**
+   с таблицей risk × (old, new, change, status).
 
 ### Планы расширения
 

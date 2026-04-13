@@ -842,6 +842,22 @@ def _render_risk_report(risk_id: str, result: RiskResult) -> None:
             sign = "+" if result.evolution_improvement > 0 else ""
             ui.label(f"Evolution: {sign}{result.evolution_improvement * 100:.1f}%").classes("text-sm text-blue-400")
 
+        # Regression info — если тестировали новую версию
+        am = getattr(state, "_agent_memory", None)
+        prev_ver = getattr(state, "_previous_version", "") or ""
+        if am and prev_ver and state.agent_version and prev_ver != state.agent_version:
+            old_results = am.get_version_results(prev_ver).get("results", {})
+            old_risk = old_results.get(risk_id, {})
+            old_rate = float(old_risk.get("rate", 0) or 0)
+            if old_rate > 0 or result.exploitation_rate > 0:
+                change = result.exploitation_rate - old_rate
+                if change < -0.05:
+                    ui.label(f"✅ Regression FIXED: {old_rate:.0%} → {result.exploitation_rate:.0%}").classes("text-xs text-green-400")
+                elif change > 0.05:
+                    ui.label(f"❌ Regression WORSE: {old_rate:.0%} → {result.exploitation_rate:.0%}").classes("text-xs text-red-400")
+                else:
+                    ui.label(f"➡️ Regression STABLE: {old_rate:.0%} → {result.exploitation_rate:.0%}").classes("text-xs text-gray-400")
+
         if result.top_evidence:
             with ui.expansion("Top Evidence"):
                 for ev in result.top_evidence[:3]:
@@ -879,12 +895,36 @@ def _build_report() -> SessionReport:
 
         top = sorted(successful, key=lambda r: r.confidence, reverse=True)[:3]
 
+        # Regression data — если есть prev version в памяти агента
+        regression_data = None
+        am = getattr(state, "_agent_memory", None)
+        prev_ver = getattr(state, "_previous_version", "") or ""
+        if am and prev_ver and state.agent_version and prev_ver != state.agent_version:
+            old_snapshot = am.get_version_results(prev_ver).get("results", {})
+            old_rate = float((old_snapshot.get(risk_id) or {}).get("rate", 0) or 0)
+            if old_rate > 0 or rate > 0:
+                change = rate - old_rate
+                reg_status = (
+                    "improved" if change < -0.05
+                    else "degraded" if change > 0.05
+                    else "stable"
+                )
+                regression_data = {
+                    "old_version": prev_ver,
+                    "new_version": state.agent_version,
+                    "old_rate": old_rate,
+                    "new_rate": rate,
+                    "change": change,
+                    "status": reg_status,
+                }
+
         risk_results[risk_id] = RiskResult(
             risk_id=risk_id, status=status, exploitation_rate=rate,
             attacks_total=total, attacks_successful=len(successful),
             confirmed_factors=confirmed_factors, top_evidence=top,
             evolution_improvement=evolution_improvement,
             confirmation_level=confirmation,
+            regression_data=regression_data,
         )
 
     total_attacks = len(state.all_results)
@@ -968,6 +1008,34 @@ def _export_full_report(report: SessionReport) -> None:
     for rid, rr in report.results.items():
         lines.append(f"| {rid} | {rr.status.upper()} | {rr.exploitation_rate * 100:.1f}% | {rr.attacks_total} | {rr.attacks_successful} |")
     lines.append("")
+
+    # Regression Report — если тестировали новую версию знакомого агента
+    am = getattr(state, "_agent_memory", None)
+    prev_ver = getattr(state, "_previous_version", "") or ""
+    if am and prev_ver and state.agent_version and prev_ver != state.agent_version:
+        old_snapshot = am.get_version_results(prev_ver).get("results", {})
+        lines.extend([
+            "## Regression Report",
+            f"**{prev_ver} → {state.agent_version}**", "",
+            "| Risk | Old | New | Change | Status |",
+            "|------|-----|-----|--------|--------|",
+        ])
+        for rid, rr in report.results.items():
+            old_rate = float((old_snapshot.get(rid) or {}).get("rate", 0) or 0)
+            new_rate = rr.exploitation_rate
+            change = new_rate - old_rate
+            if change < -0.05:
+                status = "✅ IMPROVED"
+            elif change > 0.05:
+                status = "❌ DEGRADED"
+            else:
+                status = "➡️ STABLE"
+            sign = "+" if change > 0 else ""
+            lines.append(
+                f"| {rid} | {old_rate * 100:.0f}% | {new_rate * 100:.0f}% | "
+                f"{sign}{change * 100:.0f}% | {status} |"
+            )
+        lines.extend(["", "---", ""])
 
     # Evolution
     lines.append("## Evolution History")
@@ -1098,7 +1166,12 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             display_name=state.agent_display_name,
             version=state.agent_version,
         )
-        state.log("🧠 MEMORY", f"Agent: {agent_id} (sessions: {memory.agent.data.get('total_sessions', 0)})")
+        agent_memory = memory.agent
+        global_memory = memory.global_memory
+        # Для доступа из Report / UI после завершения сессии
+        state._agent_memory = agent_memory
+        state._previous_version = agent_memory.current_version
+        state.log("🧠 MEMORY", f"Agent: {agent_id} (sessions: {agent_memory.total_sessions})")
 
         # HALL verifier (если путь задан)
         hall_verifier = None
@@ -1146,7 +1219,36 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
 
                     # Planner решает стратегию
                     if risk_gen_counter == 1:
-                        decision = planner.plan_initial(risk_config)
+                        decision = planner.plan_initial(
+                            risk_config,
+                            agent_memory=agent_memory,
+                            global_memory=global_memory,
+                            agent_version=state.agent_version,
+                        )
+                        # Логировать режим старта
+                        if decision.escalation_reason and "Regression" in decision.escalation_reason:
+                            state.log(
+                                "🔄 REGRESSION START",
+                                f"[{risk_id}] Проверка новой версии {state.agent_version} "
+                                f"(была {agent_memory.current_version})"
+                            )
+                        elif agent_memory.has_risk_history(risk_id):
+                            best_tech = agent_memory.get_best_strategy(risk_id).get("technique", "?") or "?"
+                            state.log(
+                                "🎯 PRECISION START",
+                                f"[{risk_id}] Известный агент, best: {best_tech}"
+                            )
+                        elif global_memory.has_knowledge():
+                            state.log(
+                                "📊 INFORMED START",
+                                f"[{risk_id}] Новый агент, глобальные знания "
+                                f"({global_memory.agents_tested} агентов)"
+                            )
+                        else:
+                            state.log(
+                                "🔍 FRESH START",
+                                f"[{risk_id}] Первое тестирование, разведка"
+                            )
                     elif state.planning_mode == "auto":
                         thinker_ctx = ""
                         if state.thinker_insights:
@@ -1154,6 +1256,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                         decision = await _run_in_bg(
                             planner.plan_next, risk_config, state.evolution_history, scored_results,
                             thinker_insights=thinker_ctx,
+                            agent_memory=agent_memory,
                         )
                     elif state.planning_mode == "multi":
                         decision = AttackDecision(
@@ -1503,6 +1606,7 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                 evolution_history=state.evolution_history,
                 all_results=state.all_results,
                 thinker_insights=state.thinker_insights,
+                agent_version=state.agent_version,
             )
             safe_compact = guard.sanitize_compact(compact)
             memory.commit_session(safe_compact)

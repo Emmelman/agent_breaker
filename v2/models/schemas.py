@@ -227,6 +227,8 @@ class RiskResult(BaseModel):
     top_evidence: List[AttackResult] = Field(default_factory=list)
     evolution_improvement: Optional[float] = None
     confirmation_level: str = "confirmed"
+    # Regression (если тестировали новую версию агента)
+    regression_data: Optional[Dict[str, object]] = None
 
 
 class SessionReport(BaseModel):
