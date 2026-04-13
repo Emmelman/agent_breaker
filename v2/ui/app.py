@@ -60,6 +60,10 @@ class AppState:
         self.target_url: str = "http://localhost:8000/api/chat"
         self.llm_base_url: str = "http://127.0.0.1:1234"
         self.llm_model: str = "gemma-3-12b-it"
+        # Идентификация целевого агента (level-2 память привязана к agent_id).
+        self.agent_id: str = "chatbot-professor_v2"
+        self.agent_version: str = "v2"
+        self.agent_display_name: str = "Chatbot Professor v2"
         self.evolution_enabled: bool = True
         self.max_evolution_cycles: int = 10
         self.hall_kb_path: str = r"C:\Users\Nikita\Documents\Python Projects\chatbot-professor_v2\data\knowledge_base"
@@ -206,6 +210,20 @@ def page_setup():
     _nav_header("Настройка")
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4 gap-4"):
+        # --- TARGET AGENT (level-2 memory привязана к agent_id) ---
+        with ui.card().classes("w-full"):
+            ui.label("TARGET AGENT").classes("text-lg font-semibold text-gray-400")
+            with ui.row().classes("w-full gap-4"):
+                ui.input("Agent ID", value=state.agent_id,
+                         on_change=lambda e: setattr(state, "agent_id", (e.value or "").strip())
+                         ).classes("flex-1").tooltip("Уникальный идентификатор агента — файл памяти будет data/memory/agents/<agent_id>.json")
+                ui.input("Version", value=state.agent_version,
+                         on_change=lambda e: setattr(state, "agent_version", e.value)).classes("w-40")
+            ui.input("Display Name", value=state.agent_display_name,
+                     on_change=lambda e: setattr(state, "agent_display_name", e.value)
+                     ).classes("w-full")
+            ui.label("Память агента сохраняется между сессиями — техники, rate-профиль, feedback.").classes("text-xs text-gray-500")
+
         # --- CONNECTION ---
         with ui.card().classes("w-full"):
             ui.label("CONNECTION").classes("text-lg font-semibold text-gray-400")
@@ -1055,6 +1073,8 @@ async def _run_in_bg(func, *args, **kwargs):
 
 
 async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
+    # Время старта сессии для последующей компактификации.
+    session_started_at = datetime.now()
     try:
         # Multi-model factory — читает модели из config.yaml
         factory = LLMFactory()
@@ -1070,8 +1090,15 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         evolution = EvolutionEngine(factory.attacker, generator, reviewer=factory.reviewer)
         planner = AttackPlanner(factory.attacker)
 
-        from core.strategy_memory import StrategyMemory
-        memory = StrategyMemory()
+        # Трёхуровневая память: session (AppState) + agent + global.
+        from core.memory_system import MemorySystem
+        agent_id = (state.agent_id or "").strip() or "unknown_agent"
+        memory = MemorySystem(
+            agent_id=agent_id,
+            display_name=state.agent_display_name,
+            version=state.agent_version,
+        )
+        state.log("🧠 MEMORY", f"Agent: {agent_id} (sessions: {memory.agent.data.get('total_sessions', 0)})")
 
         # HALL verifier (если путь задан)
         hall_verifier = None
@@ -1098,9 +1125,9 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
             try:
                 state.log(f"🎯 НАЧАЛО", f"Риск: {risk_id}, бюджет: {state.attack_budget}, циклов: {max_cycles}")
 
-                prior = memory.get_prior_knowledge(state.target_url, risk_id)
+                prior = memory.get_prior_knowledge(risk_id)
                 if prior:
-                    state.log("📖 MEMORY", "Знания из прошлых сессий загружены")
+                    state.log("📖 MEMORY", f"Знания из прошлых сессий загружены ({len(prior)} симв.)")
 
                 # Определяем KB-aware режим
                 is_kb_aware = _is_kb_aware_risk(risk_id, risk_config, hall_verifier)
@@ -1371,19 +1398,8 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
                                 state.log("⚠️ AUTO-STOP", f"[{risk_id}] Деградация: {r1:.0%}→{r2:.0%}→{r3:.0%}")
                                 break
 
-                    # Strategy Memory — запись
-                    meta_data = None
-                    if hasattr(cycle, "meta_diagnosis") and cycle.meta_diagnosis:
-                        meta_data = {"diagnosis": cycle.meta_diagnosis}
-                    sid = memory.record_strategy(
-                        session_id=state.session.session_id,
-                        risk_id=risk_id, target_url=state.target_url,
-                        cycle=cycle,
-                        results=[r for r in scored_results if r.risk_id == risk_id],
-                        meta_insight=meta_data,
-                    )
-                    state.log("💾 MEMORY", f"Стратегия {sid} записана")
-
+                    # Memory commit происходит один раз в конце всей сессии
+                    # (компактификация: session → agent + global).
                     state.current_status = (
                         f"[{risk_id}] Gen {risk_gen_counter}: rate={rate*100:.1f}% "
                         f"({successful}/{len(scored_results)}) [{decision.attack_mode}]"
@@ -1470,6 +1486,31 @@ async def _run_testing_pipeline(risk_configs: List[RiskConfig]) -> None:
         state.progress = 1.0
         total_succ = sum(1 for r in state.all_results if r.is_successful)
         state.log("🏁 ЗАВЕРШЕНО", f"Всего: {len(state.all_results)} атак, {total_succ} успешных")
+
+        # Компактификация сессии → agent + global memory (Ouroboros commit).
+        try:
+            from core.memory_compactor import SessionCompactor
+            from core.memory_guard import MemoryGuard
+
+            compactor = SessionCompactor()
+            guard = MemoryGuard()
+            compact = compactor.compact(
+                session_id=state.session.session_id if state.session else "unknown",
+                agent_id=agent_id,
+                target_url=state.target_url,
+                started_at=session_started_at,
+                finished_at=datetime.now(),
+                evolution_history=state.evolution_history,
+                all_results=state.all_results,
+                thinker_insights=state.thinker_insights,
+            )
+            safe_compact = guard.sanitize_compact(compact)
+            memory.commit_session(safe_compact)
+            state.log("💾 MEMORY", f"Сессия закоммичена в agent={agent_id} + global")
+        except Exception as e:
+            logger.exception("Ошибка коммита памяти")
+            state.log("⚠️ MEMORY", f"Commit error: {str(e)[:200]}")
+
         state.current_status = "Тестирование завершено!"
         state.is_running = False
 
