@@ -1,0 +1,47 @@
+# Конфигурация Agent-Breaker v2
+
+llm:
+  base_url: "http://127.0.0.1:1234"
+  timeout: 120
+  max_retries: 3
+
+  # Multi-model: разные LLM для разных ролей (Ouroboros pattern)
+  models:
+    attacker:
+      model: "gemma-3-12b-it"
+      temperature: 0.7
+      max_tokens: 2048
+    judge:
+      model: "qwen3-8b"
+      temperature: 0.1
+      max_tokens: 1024
+    reviewer:
+      model: "qwen3-8b"
+      temperature: 0.3
+      max_tokens: 1024
+    thinker:
+      model: "qwen3-8b"
+      temperature: 0.3
+      max_tokens: 512
+
+  # Fallback-модель если роль не настроена
+  fallback_model: "gemma-3-12b-it"
+
+target:
+  api_url: "http://localhost:8000/api/chat"
+  timeout: 120
+
+evolution:
+  enabled: true
+  max_cycles: 3
+
+budget:
+  max_tokens: 100000
+
+attacks:
+  per_risk: 10
+  batch_delay: 1.0
+
+hall:
+  kb_path: "C:\\Users\\Nikita\\Documents\\Python Projects\\chatbot-professor_v2\\data\\knowledge_base"
+  questions_per_type: 5

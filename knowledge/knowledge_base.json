@@ -1,0 +1,5079 @@
+{
+  "risks": {
+    "TOXIC": {
+      "id": "TOXIC",
+      "name": "toxicity",
+      "full_name": "Генерация токсичного контента",
+      "factors": [
+        "UFR-001",
+        "UFR-002",
+        "UFR-005",
+        "UFR-011",
+        "UFR-012",
+        "UFR-018",
+        "UFR-023",
+        "UFR-027",
+        "UFR-030",
+        "UFR-071",
+        "UFR-072",
+        "UFR-077",
+        "UFR-101"
+      ]
+    },
+    "HALL": {
+      "id": "HALL",
+      "name": "hallucination",
+      "full_name": "Галлюцинации",
+      "factors": [
+        "UFR-013",
+        "UFR-020",
+        "UFR-022",
+        "UFR-023",
+        "UFR-024",
+        "UFR-025",
+        "UFR-026",
+        "UFR-028",
+        "UFR-030",
+        "UFR-034",
+        "UFR-035",
+        "UFR-039",
+        "UFR-053",
+        "UFR-056",
+        "UFR-061",
+        "UFR-066",
+        "UFR-067",
+        "UFR-070",
+        "UFR-072",
+        "UFR-073",
+        "UFR-074",
+        "UFR-075",
+        "UFR-076",
+        "UFR-077",
+        "UFR-079"
+      ]
+    },
+    "DISINFO": {
+      "id": "DISINFO",
+      "name": "disinformation",
+      "full_name": "Дезинформация",
+      "factors": [
+        "UFR-019",
+        "UFR-023",
+        "UFR-028",
+        "UFR-030",
+        "UFR-035",
+        "UFR-059",
+        "UFR-066",
+        "UFR-070",
+        "UFR-073",
+        "UFR-074",
+        "UFR-075",
+        "UFR-076",
+        "UFR-078",
+        "UFR-079",
+        "UFR-081",
+        "UFR-102",
+        "UFR-103"
+      ]
+    },
+    "AGENCY": {
+      "id": "AGENCY",
+      "name": "excessiveAutonomy",
+      "full_name": "Чрезмерная автономность",
+      "factors": [
+        "UFR-019",
+        "UFR-042",
+        "UFR-043",
+        "UFR-044",
+        "UFR-045",
+        "UFR-046",
+        "UFR-047",
+        "UFR-048",
+        "UFR-049",
+        "UFR-053",
+        "UFR-056",
+        "UFR-057",
+        "UFR-058",
+        "UFR-059",
+        "UFR-062",
+        "UFR-064",
+        "UFR-082",
+        "UFR-083",
+        "UFR-084",
+        "UFR-085",
+        "UFR-088"
+      ]
+    },
+    "GH_RCE": {
+      "id": "GH_RCE",
+      "name": "hiddenGoals",
+      "full_name": "Скрытые цели / удалённое выполнение",
+      "factors": [
+        "UFR-006",
+        "UFR-012",
+        "UFR-013",
+        "UFR-019",
+        "UFR-042",
+        "UFR-044",
+        "UFR-047",
+        "UFR-048",
+        "UFR-049",
+        "UFR-053",
+        "UFR-054",
+        "UFR-055",
+        "UFR-056",
+        "UFR-057",
+        "UFR-058",
+        "UFR-060",
+        "UFR-062",
+        "UFR-063",
+        "UFR-064",
+        "UFR-072",
+        "UFR-086",
+        "UFR-088"
+      ]
+    }
+  },
+  "factors": {
+    "UFR-001": {
+      "id": "UFR-001",
+      "short_name": "FREETEXT_INPUT",
+      "group": "IN",
+      "description": "Свободный текстовый ввод без ограничений формата, длины, символов",
+      "evidence_guide": "API spec / OpenAPI schema: input field без maxLength, без pattern, без enum; отсутствие JSON Schema валидации на endpoint; UI text input без client-side и server-side ограничений длины. Ref: OWASP LLM01 (Prompt Injection), CWE-20 (Improper Input Validation)",
+      "llm_audit_prompt": "Проанализируй предоставленные артефакты (API spec, код endpoint-ов, UI-компоненты). Найди все точки пользовательского ввода и для каждой определи: (1) есть ли ограничение максимальной длины (maxLength), (2) применяется ли JSON Schema или regex pattern валидация, (3) есть ли whitelist допустимых символов/значений (enum). Перечисли все точки ввода, где хотя бы одно из ограничений отсутствует.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-002": {
+      "id": "UFR-002",
+      "short_name": "MULTIMODAL_INPUT",
+      "group": "IN",
+      "description": "Приём мультимодального ввода (изображения, аудио, PDF) с включением содержимого в контекст LLM",
+      "evidence_guide": "API spec: endpoint принимает Content-Type image/*, audio/*, application/pdf, multipart/form-data; содержимое мультимодальных файлов передаётся в messages[].content как base64 или binary; парсер извлекает текст/описание и включает в контекст LLM. Ref: OWASP LLM01, MITRE ATLAS AML.T0051 (Adversarial Input via Multimodal)",
+      "llm_audit_prompt": "Проанализируй API-спецификацию и код обработки запросов. Найди все endpoints, которые принимают мультимодальные данные (изображения, аудио, PDF, видео). Для каждого определи: (1) какие Content-Type разрешены, (2) извлекается ли текстовое содержимое из файла (OCR, транскрипция, pdf-to-text), (3) включается ли извлечённый контент в промпт LLM. Перечисли все каналы, через которые мультимодальный контент попадает в контекст модели.",
+      "activated_by_missing": null,
+      "risks": [
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-003": {
+      "id": "UFR-003",
+      "short_name": "FILE_UPLOAD_PARSE",
+      "group": "IN",
+      "description": "Загрузка файлов с парсингом и включением содержимого в контекст LLM",
+      "evidence_guide": "Код: upload handler принимает файлы → parser (PyPDF2, python-docx, pandas.read_csv, openpyxl) → извлечённый текст включается в prompt; нет whitelist допустимых расширений; нет лимита размера файла; парсер может исполнять embedded macros. Ref: OWASP LLM01, CWE-434 (Unrestricted Upload), CWE-502",
+      "llm_audit_prompt": "Проанализируй код загрузки и обработки файлов. Найди: (1) какие типы файлов разрешены к загрузке (есть ли whitelist расширений), (2) какие парсеры используются (PyPDF2, docx, csv, xlsx и др.), (3) передаётся ли результат парсинга в промпт LLM, (4) есть ли лимит размера файла, (5) отключена ли обработка макросов и embedded объектов. Перечисли все найденные upload endpoints и проследи путь данных от загрузки до промпта.",
+      "activated_by_missing": null,
+      "risks": [
+        "IPI",
+        "LEAK"
+      ]
+    },
+    "UFR-004": {
+      "id": "UFR-004",
+      "short_name": "MULTI_ENCODING_INPUT",
+      "group": "IN",
+      "description": "Допуск множественных кодировок во входных данных (UTF-16, Base64, Unicode escape) без нормализации",
+      "evidence_guide": "Код: входные данные передаются в LLM без вызова unicodedata.normalize('NFC') или эквивалента; endpoint принимает Base64, UTF-16, Unicode escape sequences (\\u202E, zero-width chars); нет этапа декодирования и канонизации перед обработкой. Ref: OWASP LLM01, CWE-176 (Improper Handling of Unicode Encoding)",
+      "llm_audit_prompt": "Проанализируй pipeline обработки входных данных. Определи: (1) принимает ли система данные в нескольких кодировках (UTF-8, UTF-16, Base64), (2) есть ли этап нормализации Unicode (вызов normalize('NFC') или аналог), (3) фильтруются ли zero-width символы (U+200B, U+FEFF), управляющие символы, RTL override (U+202E). Укажи все точки в коде, где входные данные попадают в LLM без предварительной нормализации кодировки.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI"
+      ]
+    },
+    "UFR-005": {
+      "id": "UFR-005",
+      "short_name": "MULTI_CHANNEL_INPUT",
+      "group": "IN",
+      "description": "Несколько каналов ввода с разным уровнем валидации",
+      "evidence_guide": "Архитектура: несколько input endpoints (REST API, WebSocket, webhook, email gateway, Slack bot, MCP) с разными middleware-стеками и разным набором валидаций; один канал может быть защищён, другой — нет (bypass через менее защищённый канал). Ref: OWASP LLM01, CWE-287 (Improper Authentication)",
+      "llm_audit_prompt": "Составь карту всех каналов ввода данных в систему. Для каждого канала (REST API, WebSocket, webhook, email, Slack, MCP и др.) определи: (1) какие middleware валидации применяются (auth, rate limit, input schema, injection filter), (2) одинаков ли набор проверок для всех каналов, (3) есть ли каналы с ослабленной или отсутствующей валидацией. Выдели каналы, где набор middleware отличается от наиболее защищённого канала.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-006": {
+      "id": "UFR-006",
+      "short_name": "EXTERNAL_DATA_IN_CONTEXT",
+      "group": "IN",
+      "description": "Включение внешних данных (web, email, RAG, API, tool output) в контекст LLM без санитизации",
+      "evidence_guide": "Код: fetch(url).text / email.body / tool_call.result / rag.retrieve().page_content → включается в prompt или messages[] без вызова sanitize(), strip_instructions(), remove_injection_patterns(); внешний контент не обёрнут в тег <untrusted> и не отделён от системных инструкций. Ref: OWASP LLM01 (Prompt Injection), OWASP LLM02 (Insecure Output Handling)",
+      "llm_audit_prompt": "Проанализируй все источники внешних данных, включаемых в контекст LLM: web fetch, email, RAG retrieval, tool output, API responses, пользовательские документы. Для каждого источника определи: (1) есть ли санитизация контента перед включением в промпт (strip_instructions, remove patterns), (2) маркируется ли внешний контент как untrusted, (3) разделяется ли внешний контент от системных инструкций. Перечисли все пути, по которым несанитизированные внешние данные попадают в контекст модели.",
+      "activated_by_missing": null,
+      "risks": [
+        "GH_RCE",
+        "IPI"
+      ]
+    },
+    "UFR-010": {
+      "id": "UFR-010",
+      "short_name": "HIDDEN_CONTENT_PASSTHROUGH",
+      "group": "IN",
+      "description": "Парсинг документов без удаления скрытого контента (невидимый текст, комментарии)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-005",
+      "risks": [
+        "IPI"
+      ]
+    },
+    "UFR-011": {
+      "id": "UFR-011",
+      "short_name": "STREAMING_NO_BUFFER",
+      "group": "IN",
+      "description": "Потоковая генерация без буферизации/фильтрации перед отправкой",
+      "evidence_guide": "Код: stream=True в вызове LLM API; каждый chunk передаётся клиенту через SSE/WebSocket напрямую без промежуточного буфера; нет возможности отфильтровать токсичный/утечный контент до отправки пользователю. Ref: OWASP LLM02 (Insecure Output Handling), OWASP LLM06 (Sensitive Information Disclosure)",
+      "llm_audit_prompt": "Найди в коде все места использования streaming-ответов от LLM. Определи: (1) используется ли stream=True / streaming mode, (2) передаются ли chunks напрямую клиенту (SSE, WebSocket) без буферизации, (3) есть ли промежуточный фильтр/буфер, проверяющий контент перед отправкой пользователю (leak detection, toxicity check, PII masking).",
+      "activated_by_missing": "UMF-015",
+      "risks": [
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-012": {
+      "id": "UFR-012",
+      "short_name": "FLAT_PROMPT_CONCAT",
+      "group": "PROMPT",
+      "description": "Конкатенация системного промпта, внешнего контента и ввода без структурного разделения",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-103",
+      "risks": [
+        "DPI",
+        "GH_RCE",
+        "IPI",
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-013": {
+      "id": "UFR-013",
+      "short_name": "UNLOCKED_SYSTEM_PROMPT",
+      "group": "PROMPT",
+      "description": "System prompt допускающий переопределение целей, смену роли и произвольную обработку внешних данных",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-007",
+      "risks": [
+        "DPI",
+        "GH_RCE",
+        "HALL",
+        "IPI",
+        "KNOW"
+      ]
+    },
+    "UFR-014": {
+      "id": "UFR-014",
+      "short_name": "SECRETS_IN_PROMPT",
+      "group": "PROMPT",
+      "description": "Конфиденциальные данные (PII, API-ключи) в тексте системного промпта",
+      "evidence_guide": "System prompt: содержит API-ключи (sk-..., AKIA...), пароли, токены, PII (email, телефон, ФИО), connection strings (postgresql://user:pass@host), internal URLs; данные могут быть извлечены через prompt injection. Ref: OWASP LLM06 (Sensitive Information Disclosure), CWE-798 (Hard-coded Credentials)",
+      "llm_audit_prompt": "Проанализируй текст system prompt и все шаблоны промптов в коде. Найди: (1) API-ключи и токены (паттерны sk-*, AKIA*, ghp_*, xoxb-*), (2) пароли и connection strings, (3) персональные данные (email, телефоны, ФИО, адреса), (4) внутренние URL и IP-адреса, (5) названия внутренних систем, баз данных, таблиц. Перечисли каждую находку с указанием строки и типа конфиденциальных данных.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "LEAK"
+      ]
+    },
+    "UFR-015": {
+      "id": "UFR-015",
+      "short_name": "UNSTRUCTURED_PROMPT",
+      "group": "PROMPT",
+      "description": "Единый неструктурированный системный промпт без секций",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-006",
+      "risks": [
+        "DPI"
+      ]
+    },
+    "UFR-016": {
+      "id": "UFR-016",
+      "short_name": "NO_INSTRUCTION_HIERARCHY",
+      "group": "PROMPT",
+      "description": "Промпт агента содержит инструкции одного уровня приоритета (flat hierarchy), не разграничивая системные и пользовательские",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-010",
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-017": {
+      "id": "UFR-017",
+      "short_name": "AGENT_OUTPUT_IN_SYSTEM_ROLE",
+      "group": "PROMPT",
+      "description": "Размещение вывода агента в role:system промпта другого агента",
+      "evidence_guide": "Код оркестратора: output агента A включается в messages другого агента B с role:'system'; это позволяет агенту A внедрить произвольные инструкции с системным приоритетом для агента B; корректно: role:'user' или role:'assistant' с маркировкой источника. Ref: OWASP LLM01, OWASP LLM08 (Excessive Agency)",
+      "llm_audit_prompt": "Проанализируй код межагентной коммуникации. Для каждой передачи данных между агентами определи: (1) в какой role помещается вывод одного агента при передаче другому (system / user / assistant / tool), (2) есть ли случаи, когда вывод агента попадает в role:'system', (3) маркируется ли источник данных (agent_id, trust level). Каждый случай role:'system' с содержимым от другого агента — это находка.",
+      "activated_by_missing": null,
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-018": {
+      "id": "UFR-018",
+      "short_name": "PERSONA_ROLEPLAY_RISK",
+      "group": "PROMPT",
+      "description": "Role-play инструкция допускающая произвольную роль / few-shot с демографическими признаками",
+      "evidence_guide": "System prompt: содержит инструкцию 'You are {variable_role}' где роль задаётся пользователем без whitelist допустимых значений; few-shot примеры содержат возраст, пол, расу, национальность, религию или другие демографические признаки. Ref: OWASP LLM09 (Misinformation), NIST AI 100-2 (Bias)",
+      "llm_audit_prompt": "Проанализируй system prompt и все шаблоны промптов. Найди: (1) инструкции задания роли — есть ли ограничение допустимых ролей (whitelist), (2) few-shot примеры — содержат ли они демографические признаки (возраст, пол, раса, национальность, религия), (3) может ли пользователь задать произвольную роль через ввод. Отметь все примеры с демографическими признаками и незащищённые role-play инструкции.",
+      "activated_by_missing": null,
+      "risks": [
+        "TOXIC"
+      ]
+    },
+    "UFR-019": {
+      "id": "UFR-019",
+      "short_name": "PERSISTENT_MEMORY_UNVALIDATED",
+      "group": "CTX",
+      "description": "Персистентная память между сессиями с записью произвольного контента без валидации",
+      "evidence_guide": "Код: memory.write(key, user_input) / memory.write(key, llm_output) — запись в persistent store (Redis, DB, файл) без content_filter() на injection patterns; нет TTL/expiration; нет scope per user_id; данные сохраняются между сессиями; позволяет poisoning через persisted injection. Ref: OWASP LLM01 (Persistent Prompt Injection), MITRE ATLAS AML.T0051",
+      "llm_audit_prompt": "Найди в коде все операции записи в персистентную память (memory store, Redis, DB, файлы). Для каждой операции определи: (1) что записывается (user input, LLM output, tool results), (2) есть ли фильтрация контента перед записью (content filter, injection pattern check), (3) установлен ли TTL/expiration, (4) изолированы ли данные по user_id/session_id, (5) используются ли эти данные в промптах будущих сессий.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "DISINFO",
+        "GH_RCE",
+        "MULTI"
+      ]
+    },
+    "UFR-020": {
+      "id": "UFR-020",
+      "short_name": "FULL_HISTORY_IN_CONTEXT",
+      "group": "CTX",
+      "description": "Полная история диалога / CoT в контекстном окне без ограничения",
+      "evidence_guide": "Код: messages = conversation_history (полная история без truncation); CoT/reasoning/scratchpad включается в контекст следующего вызова; при длинных сессиях ранние injection payloads остаются в контексте. Ref: OWASP LLM01, CWE-400 (Uncontrolled Resource Consumption)",
+      "llm_audit_prompt": "Проанализируй как формируется messages[] для каждого LLM-вызова. Определи: (1) включается ли полная история диалога без ограничения, (2) есть ли механизм truncation / sliding window / summarization, (3) включаются ли chain-of-thought / reasoning / scratchpad блоки в контекст следующего вызова, (4) какой максимальный размер контекста может быть достигнут в длинной сессии.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "HALL",
+        "KNOW",
+        "MULTI"
+      ]
+    },
+    "UFR-021": {
+      "id": "UFR-021",
+      "short_name": "CROSS_USER_MEMORY_LEAK",
+      "group": "CTX",
+      "description": "Общий memory store для нескольких пользователей (shared context)",
+      "evidence_guide": "Код: memory_store / vector_store / Redis / DB используется как общий для всех пользователей без partition по user_id / tenant_id; один пользователь может прочитать или отравить данные другого. Ref: OWASP LLM06, CWE-200 (Information Exposure)",
+      "llm_audit_prompt": "Проанализируй архитектуру хранения данных (memory store, vector DB, cache). Определи: (1) есть ли изоляция данных по пользователям (namespace, partition, tenant_id), (2) может ли запрос одного пользователя вернуть данные другого, (3) есть ли shared context / shared memory, доступный нескольким пользователям.",
+      "activated_by_missing": null,
+      "risks": [
+        "LEAK"
+      ]
+    },
+    "UFR-022": {
+      "id": "UFR-022",
+      "short_name": "CONTEXT_WINDOW_OVERFLOW",
+      "group": "CTX",
+      "description": "Переполнение контекстного окна",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-090",
+      "risks": [
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-023": {
+      "id": "UFR-023",
+      "short_name": "HIGH_TEMPERATURE",
+      "group": "CTX",
+      "description": "Высокое значение temperature / top_p в критичном домене",
+      "evidence_guide": "Конфиг LLM: temperature ≥ 0.7 или top_p ≥ 0.9 при использовании в safety-critical домене (медицина, финансы, юриспруденция, управление инфраструктурой); высокая стохастичность увеличивает вероятность галлюцинаций и непредсказуемых ответов. Ref: OWASP LLM09 (Misinformation), NIST AI RMF MAP 2.3",
+      "llm_audit_prompt": "Найди в конфигурации все параметры генерации LLM. Для каждого LLM-вызова определи: (1) значение temperature, (2) значение top_p, (3) домен применения. Отметь все случаи где temperature ≥ 0.7 или top_p ≥ 0.9 в критичных доменах (медицина, финансы, юриспруденция, безопасность, управление инфраструктурой).",
+      "activated_by_missing": null,
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "KNOW",
+        "TOXIC"
+      ]
+    },
+    "UFR-024": {
+      "id": "UFR-024",
+      "short_name": "UNBOUNDED_MAX_TOKENS",
+      "group": "CTX",
+      "description": "Параметр max_tokens задан без верхней границы или установлен на максимальное значение контекстного окна",
+      "evidence_guide": "Конфиг LLM: параметр max_tokens не задан (используется дефолт провайдера), или установлен на максимальное значение контекстного окна модели (128K/200K); позволяет генерацию неоправданно длинных ответов, увеличивая стоимость и риск утечки. Ref: OWASP LLM10 (Model Denial of Service), CWE-400",
+      "llm_audit_prompt": "Найди в конфигурации значение max_tokens для каждого LLM-вызова. Отметь случаи где: (1) max_tokens не задан, (2) max_tokens установлен на максимальное значение модели, (3) max_tokens не соответствует ожидаемой длине ответа для данной задачи.",
+      "activated_by_missing": null,
+      "risks": [
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-025": {
+      "id": "UFR-025",
+      "short_name": "ZERO_REPETITION_PENALTY",
+      "group": "CTX",
+      "description": "Нулевые frequency/presence penalty — усиление зацикливания",
+      "evidence_guide": "Конфиг LLM: frequency_penalty = 0 AND presence_penalty = 0 (или не заданы, дефолт = 0); при нулевых penalty модель склонна к зацикливанию и повторению фраз. Ref: OWASP LLM09, связан с hallucination loops",
+      "llm_audit_prompt": "Найди в конфигурации значения frequency_penalty и presence_penalty. Отметь все LLM-вызовы где оба параметра равны 0 или не заданы. Обрати внимание на использование в длинных генерациях и диалогах.",
+      "activated_by_missing": null,
+      "risks": [
+        "HALL"
+      ]
+    },
+    "UFR-026": {
+      "id": "UFR-026",
+      "short_name": "GENERAL_MODEL_SPECIALIZED_DOMAIN",
+      "group": "CTX",
+      "description": "General-purpose модель в специализированном домене",
+      "evidence_guide": "Конфиг: используется general-purpose модель (gpt-4o, claude-3, llama-3) в узкоспециализированном домене (медицинская диагностика, юридические консультации, финансовый анализ); нет fine-tuned или domain-specific модели. Ref: OWASP LLM09, NIST AI RMF GOVERN 1.2",
+      "llm_audit_prompt": "Определи: (1) какая модель используется (general-purpose или domain-specific / fine-tuned), (2) в каком домене применяется приложение, (3) если домен специализированный — обоснован ли выбор general-purpose модели, (4) есть ли domain-specific evaluation результаты для выбранной модели.",
+      "activated_by_missing": null,
+      "risks": [
+        "HALL"
+      ]
+    },
+    "UFR-027": {
+      "id": "UFR-027",
+      "short_name": "UNPINNED_MODEL_VERSION",
+      "group": "CTX",
+      "description": "Нефиксированная версия модели (latest / auto-upgrade)",
+      "evidence_guide": "Конфиг: model = 'latest' / 'gpt-4o' без pin версии (например gpt-4o-2024-08-06); auto_upgrade = true; нет фиксации версии в lock-файле; обновление модели провайдером может изменить поведение без уведомления. Ref: OWASP LLM05 (Supply Chain), NIST AI RMF GOVERN 1.5",
+      "llm_audit_prompt": "Найди в конфигурации все указания модели. Определи: (1) зафиксирована ли конкретная версия модели (с датой / hash), (2) используется ли тег 'latest' или alias без версии, (3) включён ли auto_upgrade, (4) есть ли lock-файл с pinned версией модели.",
+      "activated_by_missing": "UMF-077",
+      "risks": [
+        "KNOW",
+        "TOXIC"
+      ]
+    },
+    "UFR-028": {
+      "id": "UFR-028",
+      "short_name": "NO_RAG_GROUNDING",
+      "group": "RAG",
+      "description": "Генерация ответов исключительно из параметрической памяти модели (без retrieval-augmentation)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-031",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-029": {
+      "id": "UFR-029",
+      "short_name": "UNSEGMENTED_RAG",
+      "group": "RAG",
+      "description": "Единый RAG-индекс без сегментации по уровням доступа и конфиденциальности",
+      "evidence_guide": "Код RAG: единый vector index (Pinecone, Weaviate, ChromaDB, FAISS) без metadata filter по access_level, tenant_id, classification; все документы всех пользователей в одном namespace; запрос одного пользователя может вернуть конфиденциальные документы другого. Ref: OWASP LLM06, CWE-862 (Missing Authorization)",
+      "llm_audit_prompt": "Проанализируй архитектуру RAG pipeline. Определи: (1) используется ли единый vector index для всех пользователей, (2) есть ли metadata filter по access_level / tenant_id / classification при retrieval, (3) может ли запрос одного пользователя вернуть документы другого или документы с более высоким уровнем доступа.",
+      "activated_by_missing": "UMF-034",
+      "risks": [
+        "IPI",
+        "LEAK"
+      ]
+    },
+    "UFR-030": {
+      "id": "UFR-030",
+      "short_name": "UNVETTED_RAG_SOURCES",
+      "group": "RAG",
+      "description": "RAG с неверифицированными / устаревшими / неаудированными источниками",
+      "evidence_guide": "RAG config: список источников включает неаудированные URL, user-uploaded документы, непроверенные wiki, устаревшие документы без даты актуальности; нет поля source_trust_level или audit_date для источников. Ref: OWASP LLM03 (Training Data Poisoning), NIST AI RMF MAP 2.3",
+      "llm_audit_prompt": "Проанализируй источники данных для RAG. Для каждого источника определи: (1) верифицирован ли он (trusted source), (2) когда последний раз обновлялся, (3) есть ли audit trail / approval process для добавления источников, (4) есть ли source_trust_level или classification для ранжирования достоверности.",
+      "activated_by_missing": "UMF-031",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "IPI",
+        "KNOW",
+        "TOXIC"
+      ]
+    },
+    "UFR-031": {
+      "id": "UFR-031",
+      "short_name": "EXTERNAL_RAG_NO_VALIDATION",
+      "group": "RAG",
+      "description": "RAG-индексация из внешних источников без валидации контента",
+      "evidence_guide": "Код: index.add(documents_from_external_source) без content_validation(); нет проверки на prompt injection patterns в индексируемых документах; нет content moderation перед индексацией. Ref: OWASP LLM03, OWASP LLM01 (Indirect Prompt Injection via RAG)",
+      "llm_audit_prompt": "Найди в коде все операции добавления документов в RAG-индекс. Для каждой определи: (1) проходит ли контент валидацию перед индексацией, (2) выполняется ли проверка на prompt injection patterns, (3) есть ли content moderation / toxicity check, (4) из каких источников приходят документы (internal / external / user-uploaded).",
+      "activated_by_missing": null,
+      "risks": [
+        "IPI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-032": {
+      "id": "UFR-032",
+      "short_name": "PUBLIC_KB_UPLOAD",
+      "group": "RAG",
+      "description": "Публичный эндпоинт для загрузки документов в базу знаний без контроля",
+      "evidence_guide": "API: POST /kb/upload, /documents/add или аналогичный endpoint для загрузки документов в базу знаний без аутентификации, без авторизации по роли, без rate limiting; любой пользователь (или анонимный пользователь) может добавить документ. Ref: OWASP LLM01, CWE-306 (Missing Authentication)",
+      "llm_audit_prompt": "Найди все endpoints для загрузки документов в базу знаний / RAG. Определи: (1) требуется ли аутентификация, (2) проверяется ли роль/права пользователя (authorization), (3) есть ли rate limiting, (4) логируются ли операции загрузки.",
+      "activated_by_missing": null,
+      "risks": [
+        "IPI"
+      ]
+    },
+    "UFR-033": {
+      "id": "UFR-033",
+      "short_name": "METADATA_IN_PROMPT",
+      "group": "RAG",
+      "description": "Включение чувствительных метаданных документов в контекст LLM",
+      "evidence_guide": "Код RAG: document metadata (author, file_path, permissions, creation_date, internal tags) включается в prompt template как часть контекста; раскрывает внутреннюю структуру, имена пользователей, пути файловой системы. Ref: OWASP LLM06, CWE-200",
+      "llm_audit_prompt": "Проанализируй prompt template для RAG. Определи: (1) какие metadata полей документов включаются в промпт (author, path, permissions, dates), (2) содержат ли metadata чувствительную информацию (internal paths, usernames, access levels), (3) необходимы ли эти metadata для задачи или они избыточны.",
+      "activated_by_missing": null,
+      "risks": [
+        "IPI",
+        "LEAK"
+      ]
+    },
+    "UFR-034": {
+      "id": "UFR-034",
+      "short_name": "RAG_NO_RELEVANCE_THRESHOLD",
+      "group": "RAG",
+      "description": "Retrieval-pipeline передаёт документы в контекст LLM при любом значении similarity score",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-032",
+      "risks": [
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-035": {
+      "id": "UFR-035",
+      "short_name": "RAG_NO_SOURCE_ATTRIBUTION",
+      "group": "RAG",
+      "description": "Ответы LLM передаются пользователю без атрибуции источников и ссылок на документы",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-031",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-036": {
+      "id": "UFR-036",
+      "short_name": "EMBEDDING_MODEL_MISMATCH",
+      "group": "RAG",
+      "description": "Несоответствие embedding-модели между index и query",
+      "evidence_guide": "Конфиг RAG: embedding model при индексации (index time) отличается от embedding model при запросе (query time); или версии одной модели различаются; приводит к semantic drift и нерелевантным результатам. Ref: связан с OWASP LLM09 (Misinformation), degradation of RAG quality",
+      "llm_audit_prompt": "Проанализируй конфигурацию RAG pipeline. Определи: (1) какая embedding модель используется при индексации, (2) какая embedding модель используется при запросе, (3) совпадают ли модели и их версии, (4) есть ли механизм переиндексации при смене embedding модели.",
+      "activated_by_missing": "UMF-039",
+      "risks": [
+        "KNOW"
+      ]
+    },
+    "UFR-037": {
+      "id": "UFR-037",
+      "short_name": "CHUNKING_STRATEGY_LOSS",
+      "group": "RAG",
+      "description": "Стратегия чанкинга с потерей контекста",
+      "evidence_guide": "Код: chunk_size фиксированный (512/1024 tokens) без overlap; разрыв предложений, абзацев, таблиц; потеря cross-chunk контекста; нет metadata linking между связанными чанками. Ref: связан с OWASP LLM09, degradation of RAG quality",
+      "llm_audit_prompt": "Проанализируй стратегию чанкинга в RAG pipeline. Определи: (1) размер чанков (chunk_size), (2) есть ли overlap между чанками, (3) учитываются ли границы предложений/абзацев, (4) сохраняется ли metadata связи между чанками одного документа.",
+      "activated_by_missing": null,
+      "risks": [
+        "KNOW"
+      ]
+    },
+    "UFR-038": {
+      "id": "UFR-038",
+      "short_name": "MULTI_SOURCE_CONFLICT",
+      "group": "RAG",
+      "description": "Конфликтующие данные из множественных источников без resolution",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-040",
+      "risks": [
+        "KNOW"
+      ]
+    },
+    "UFR-039": {
+      "id": "UFR-039",
+      "short_name": "STALE_KNOWLEDGE_BASE",
+      "group": "RAG",
+      "description": "Устаревшие данные в knowledge base без процесса актуализации",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-033",
+      "risks": [
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-041": {
+      "id": "UFR-041",
+      "short_name": "TOOL_USE_ENABLED",
+      "group": "TOOL",
+      "description": "Доступ LLM к вызову внешних функций/инструментов (tool_use / function calling)",
+      "evidence_guide": "Конфиг LLM: tools:[...] / tool_use:enabled / function_calling:auto; модель может вызывать внешние функции; увеличивает поверхность атаки (tool abuse, parameter injection, excessive agency). Ref: OWASP LLM08 (Excessive Agency), OWASP LLM01",
+      "llm_audit_prompt": "Определи: (1) включён ли tool_use / function_calling, (2) какие инструменты доступны модели (полный список tool definitions), (3) в каком режиме работает function_calling (auto / required / none), (4) может ли модель вызывать инструменты без подтверждения пользователя.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "LEAK"
+      ]
+    },
+    "UFR-042": {
+      "id": "UFR-042",
+      "short_name": "UNRESTRICTED_TOOL_SET",
+      "group": "TOOL",
+      "description": "Доступ к инструментам без whitelist / full toolset на каждом шаге",
+      "evidence_guide": "Конфиг: tools = полный список всех доступных инструментов передаётся на каждом шаге; нет per-step, per-task, per-agent ограничения набора tools; нет whitelist по контексту задачи; модель может вызвать любой инструмент на любом шаге. Ref: OWASP LLM08, principle of least privilege for tools",
+      "llm_audit_prompt": "Проанализируй как формируется список tools для каждого LLM-вызова. Определи: (1) передаётся ли полный набор инструментов на каждом шаге, (2) есть ли per-step / per-agent / per-task ограничение набора tools, (3) есть ли whitelist инструментов по типу задачи, (4) может ли модель вызвать деструктивный инструмент при выполнении read-only задачи.",
+      "activated_by_missing": "UMF-016",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "SUPPLY"
+      ]
+    },
+    "UFR-043": {
+      "id": "UFR-043",
+      "short_name": "DESTRUCTIVE_TOOLS",
+      "group": "TOOL",
+      "description": "Доступ LLM к деструктивным CRUD-операциям, финансовым / PII / инфраструктурным действиям",
+      "evidence_guide": "Tool definitions: доступны функции с деструктивным импактом — DELETE/DROP (удаление данных), UPDATE (изменение данных), transfer/payment (финансовые операции), send_email/send_sms (коммуникации от имени пользователя), deploy/restart (инфраструктура). Ref: OWASP LLM08, CWE-250 (Execution with Unnecessary Privileges)",
+      "llm_audit_prompt": "Проанализируй полный список tool definitions. Классифицируй каждый инструмент по уровню импакта: READ (чтение), WRITE (запись), DELETE (удаление), FINANCIAL (финансовые операции), COMMUNICATION (отправка сообщений), INFRASTRUCTURE (деплой, рестарт). Перечисли все инструменты с импактом выше READ и укажи, есть ли для них дополнительная защита (approval, confirmation).",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "DPI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-044": {
+      "id": "UFR-044",
+      "short_name": "OPEN_ENDED_TOOLS",
+      "group": "TOOL",
+      "description": "Наличие open-ended инструментов (shell, eval, SQL concat)",
+      "evidence_guide": "Tool definitions содержат open-ended инструменты: shell(command), eval(code), execute_sql(raw_query), run_script(script) — позволяют выполнить произвольную команду/код; нет whitelist разрешённых команд/операций. Ref: OWASP LLM08, CWE-78 (OS Command Injection), CWE-94 (Code Injection)",
+      "llm_audit_prompt": "Найди в tool definitions все open-ended инструменты, которые принимают произвольные команды или код: shell/bash/exec, eval/execute, raw SQL, run_script, http_request (произвольный URL). Для каждого определи: (1) есть ли whitelist разрешённых команд/операций, (2) есть ли sandbox, (3) логируются ли вызовы.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "GH_RCE"
+      ]
+    },
+    "UFR-045": {
+      "id": "UFR-045",
+      "short_name": "DYNAMIC_TOOL_LOADING",
+      "group": "TOOL",
+      "description": "Динамическая загрузка инструментов / плагинов без integrity check",
+      "evidence_guide": "Код: load_plugin(url) / importlib.import_module(dynamic_name) / require(user_provided_path) без hash verification, без signature check; нет allowlist одобренных источников; загруженный плагин получает доступ к runtime. Ref: OWASP LLM05 (Supply Chain), CWE-494 (Download Without Integrity Check)",
+      "llm_audit_prompt": "Найди в коде все места динамической загрузки инструментов/плагинов. Определи: (1) откуда загружаются плагины (URL, path, registry), (2) проверяется ли hash/signature при загрузке, (3) есть ли allowlist одобренных источников, (4) какие привилегии получает загруженный плагин.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "SUPPLY"
+      ]
+    },
+    "UFR-046": {
+      "id": "UFR-046",
+      "short_name": "DEBUG_TOOLS_IN_PROD",
+      "group": "TOOL",
+      "description": "Debug-инструменты в production среде",
+      "evidence_guide": "Deployment: debug endpoints (/debug, /admin, /test, /internal, /metrics без auth) доступны в production среде; debug tools включены в tool list LLM; verbose logging в production раскрывает internal state. Ref: OWASP LLM08, CWE-489 (Active Debug Code)",
+      "llm_audit_prompt": "Проверь production deployment на наличие debug-артефактов: (1) debug endpoints (/debug, /admin, /test, /internal, /swagger, /graphql playground), (2) debug tools в списке инструментов LLM, (3) verbose/debug logging level в production, (4) exposed metrics endpoints без аутентификации.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "SUPPLY"
+      ]
+    },
+    "UFR-047": {
+      "id": "UFR-047",
+      "short_name": "UNVALIDATED_TOOL_PARAMS",
+      "group": "TOOL",
+      "description": "Tool call params из LLM output без валидации по JSON Schema",
+      "evidence_guide": "Код: LLM генерирует tool_call с параметрами → параметры передаются в функцию напрямую без валидации по JSON Schema, без проверки типов, диапазонов, business rules; позволяет parameter injection и unexpected tool behavior. Ref: OWASP LLM01, OWASP LLM08, CWE-20",
+      "llm_audit_prompt": "Проанализируй код обработки tool calls. Для каждого инструмента определи: (1) валидируются ли параметры по JSON Schema перед вызовом функции, (2) проверяются ли типы и диапазоны значений, (3) применяются ли business rules (например: amount < max_limit, email in allowed_domains), (4) что происходит при невалидных параметрах (ошибка или silent execution).",
+      "activated_by_missing": "UMF-017",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "IPI"
+      ]
+    },
+    "UFR-048": {
+      "id": "UFR-048",
+      "short_name": "UNVALIDATED_TOOL_CHAINS",
+      "group": "TOOL",
+      "description": "Цепочки tool calls без валидации промежуточных результатов",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-017",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "IPI"
+      ]
+    },
+    "UFR-049": {
+      "id": "UFR-049",
+      "short_name": "TOOL_OUTPUT_AS_INSTRUCTION",
+      "group": "TOOL",
+      "description": "Tool output включается в контекст как инструкция, а не данные",
+      "evidence_guide": "Код: результат tool call включается в messages[] как {role:'system'} или без специальной маркировки; модель обрабатывает tool output как системную инструкцию, а не как данные; позволяет indirect injection через tool output. Ref: OWASP LLM01 (Indirect Prompt Injection via Tool Output), OWASP LLM08",
+      "llm_audit_prompt": "Проанализируй как результаты tool calls включаются в контекст. Для каждого инструмента определи: (1) в какой role помещается результат (system / tool / user), (2) маркируется ли результат как данные (не инструкция), (3) санитизируется ли tool output от injection patterns перед включением в контекст.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "IPI"
+      ]
+    },
+    "UFR-050": {
+      "id": "UFR-050",
+      "short_name": "UNVERIFIED_MCP_SERVERS",
+      "group": "TOOL",
+      "description": "Загрузка MCP-серверов без верификации / из непроверенных источников",
+      "evidence_guide": "Конфиг MCP: серверы загружаются по URL без проверки подписи; источник не в allow-list одобренных MCP-серверов; нет hash pinning; вредоносный MCP-сервер может подменить инструменты. Ref: OWASP LLM05, MCP Security specification",
+      "llm_audit_prompt": "Проанализируй конфигурацию MCP-серверов. Для каждого MCP-сервера определи: (1) откуда загружается (URL, path), (2) проверяется ли подпись/hash при загрузке, (3) есть ли allow-list одобренных серверов, (4) может ли сервер быть подменён (MITM, DNS spoofing).",
+      "activated_by_missing": "UMF-100",
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-053": {
+      "id": "UFR-053",
+      "short_name": "CODE_INTERPRETER",
+      "group": "AGENT",
+      "description": "Наличие code interpreter / auto-execute кода без sandbox",
+      "evidence_guide": "Код: exec(llm_generated_code) / subprocess.run(llm_code) / code_interpreter.run() выполняется в основном контейнере без sandbox (gVisor, Firecracker, nsjail); сгенерированный код имеет доступ к файловой системе, сети, переменным среды хоста. Ref: OWASP LLM08, CWE-94 (Code Injection), MITRE ATLAS AML.T0049",
+      "llm_audit_prompt": "Найди все места, где выполняется код, сгенерированный LLM. Определи: (1) используется ли sandbox (gVisor, Firecracker, nsjail, Docker-in-Docker), (2) выполняется ли код в основном контейнере приложения, (3) какой доступ имеет исполняемый код (файловая система, сеть, env vars, secrets), (4) есть ли timeout и resource limits для выполнения.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "HALL"
+      ]
+    },
+    "UFR-054": {
+      "id": "UFR-054",
+      "short_name": "EVAL_EXEC_ON_LLM_OUTPUT",
+      "group": "AGENT",
+      "description": "eval()/exec() на данных из LLM output; unsafe deserialization",
+      "evidence_guide": "Код: eval(llm_response) / exec(llm_response) / pickle.loads(llm_data) / yaml.load(data, Loader=yaml.FullLoader) / json.loads() с custom deserializer — небезопасная десериализация данных из LLM output. Ref: CWE-502 (Deserialization of Untrusted Data), CWE-94",
+      "llm_audit_prompt": "Найди в коде все вызовы eval(), exec(), pickle.loads(), yaml.load() (без SafeLoader), и custom deserializers. Для каждого определи: (1) приходят ли данные из LLM output, (2) валидируются ли данные перед десериализацией, (3) используется ли безопасная альтернатива (json.loads, safetensors, yaml.safe_load).",
+      "activated_by_missing": null,
+      "risks": [
+        "GH_RCE"
+      ]
+    },
+    "UFR-055": {
+      "id": "UFR-055",
+      "short_name": "CICD_TRIGGER_FROM_AGENT",
+      "group": "AGENT",
+      "description": "CI/CD trigger от LLM-агента",
+      "evidence_guide": "Код: LLM-агент может вызвать webhook / API endpoint, который запускает CI/CD pipeline (Jenkins, GitHub Actions, GitLab CI, ArgoCD); нет approval gate между решением агента и запуском pipeline. Ref: OWASP LLM08, CWE-862",
+      "llm_audit_prompt": "Определи, может ли LLM-агент напрямую запускать CI/CD: (1) есть ли инструменты/webhooks для trigger CI/CD, (2) требуется ли human approval перед запуском, (3) какие pipelines может запустить агент (deploy, release, infrastructure change).",
+      "activated_by_missing": null,
+      "risks": [
+        "GH_RCE"
+      ]
+    },
+    "UFR-056": {
+      "id": "UFR-056",
+      "short_name": "UNBOUNDED_AUTONOMOUS_LOOP",
+      "group": "AGENT",
+      "description": "Агентный цикл без ограничения итераций / unbounded planning",
+      "evidence_guide": "Код агента: while True / for i in range(max_int) без max_iterations; planning loop без depth limit; ReAct/CoT loop без условия выхода; может привести к бесконечному выполнению и исчерпанию бюджета. Ref: OWASP LLM08, OWASP LLM10 (Model DoS), CWE-835 (Loop with Unreachable Exit)",
+      "llm_audit_prompt": "Найди все агентные циклы (ReAct loop, planning loop, tool loop). Для каждого определи: (1) есть ли max_iterations / max_steps, (2) есть ли условие выхода помимо 'задача выполнена', (3) есть ли timeout на весь цикл, (4) есть ли budget/cost cap.",
+      "activated_by_missing": "UMF-026",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "HALL"
+      ]
+    },
+    "UFR-057": {
+      "id": "UFR-057",
+      "short_name": "NO_KILL_SWITCH",
+      "group": "AGENT",
+      "description": "Агентный runtime работает без механизма экстренной остановки (kill switch / circuit breaker)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-027",
+      "risks": [
+        "AGENCY",
+        "GH_RCE"
+      ]
+    },
+    "UFR-058": {
+      "id": "UFR-058",
+      "short_name": "AUTO_EXECUTE_HIGH_IMPACT",
+      "group": "AGENT",
+      "description": "Авто-выполнение высокоимпактных действий без HITL",
+      "evidence_guide": "Код: high-impact actions (deploy, delete, payment, send_email, modify_infrastructure) выполняются автоматически по решению LLM без human approval, confirmation dialog, или require_approval flag; модель автономно совершает необратимые действия. Ref: OWASP LLM08, NIST AI RMF GOVERN 1.4",
+      "llm_audit_prompt": "Найди все high-impact инструменты и определи для каждого: (1) выполняется ли действие автоматически или требуется подтверждение, (2) есть ли флаг require_approval / needs_confirmation, (3) показывается ли пользователю preview перед выполнением, (4) есть ли возможность rollback после выполнения.",
+      "activated_by_missing": "UMF-021",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "IPI"
+      ]
+    },
+    "UFR-059": {
+      "id": "UFR-059",
+      "short_name": "NO_IMPACT_CLASSIFICATION",
+      "group": "AGENT",
+      "description": "Все действия агента обрабатываются с единым уровнем доверия, без градации по импакту",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-022",
+      "risks": [
+        "AGENCY",
+        "DISINFO"
+      ]
+    },
+    "UFR-060": {
+      "id": "UFR-060",
+      "short_name": "NO_INTENT_VERIFICATION",
+      "group": "AGENT",
+      "description": "Действия агента исполняются без предварительной верификации намерения (intent verification)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-025",
+      "risks": [
+        "GH_RCE"
+      ]
+    },
+    "UFR-061": {
+      "id": "UFR-061",
+      "short_name": "RETRY_WITHOUT_BACKOFF",
+      "group": "AGENT",
+      "description": "Retry без backoff / бесконечное ожидание / продолжение при ошибках",
+      "evidence_guide": "Код: retry logic без exponential backoff (fixed delay или no delay); while not success без max_retries; timeout не установлен на LLM call; catch Exception: continue (глушение ошибок и продолжение). Ref: OWASP LLM10, CWE-400, связан с looping behavior",
+      "llm_audit_prompt": "Найди все retry-логику для LLM-вызовов и tool calls. Определи: (1) используется ли exponential backoff, (2) есть ли max_retries, (3) установлен ли timeout на каждый вызов, (4) обрабатываются ли ошибки корректно или глушатся (catch all → continue).",
+      "activated_by_missing": "UMF-029",
+      "risks": [
+        "HALL"
+      ]
+    },
+    "UFR-062": {
+      "id": "UFR-062",
+      "short_name": "EXCESSIVE_TOOL_CALLS",
+      "group": "AGENT",
+      "description": "Агент вызывает инструменты без ограничения частоты (rate limit) и без фильтрации по релевантности задаче",
+      "evidence_guide": "Код: агент вызывает инструменты без rate_limit() / без проверки relevance score перед вызовом; может вызвать N инструментов за один step; нет бюджетного ограничения на tool calls per session. Ref: OWASP LLM08, OWASP LLM10",
+      "llm_audit_prompt": "Проанализируй как агент вызывает инструменты. Определи: (1) есть ли rate limit на количество tool calls за step / за сессию, (2) проверяется ли релевантность инструмента задаче перед вызовом, (3) есть ли бюджетное ограничение (max tool calls per session), (4) логируется ли каждый tool call.",
+      "activated_by_missing": "UMF-028",
+      "risks": [
+        "AGENCY",
+        "GH_RCE"
+      ]
+    },
+    "UFR-063": {
+      "id": "UFR-063",
+      "short_name": "UNAUTHENTICATED_INTER_AGENT",
+      "group": "AGENT",
+      "description": "Межагентные сообщения передаются по каналу без проверки идентичности отправителя и без шифрования",
+      "evidence_guide": "Код: межагентные сообщения передаются по HTTP/gRPC без mTLS; нет проверки идентичности отправителя (sender authentication); канал plaintext (без шифрования); позволяет spoofing и MitM. Ref: OWASP LLM08, CWE-319 (Cleartext Transmission), CWE-287",
+      "llm_audit_prompt": "Проанализируй каналы коммуникации между агентами. Для каждого канала определи: (1) используется ли TLS/mTLS, (2) аутентифицируется ли отправитель (per-message auth, agent_id verification), (3) подписываются ли сообщения, (4) может ли сторонний агент подменить отправителя.",
+      "activated_by_missing": "UMF-045",
+      "risks": [
+        "GH_RCE",
+        "MULTI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-064": {
+      "id": "UFR-064",
+      "short_name": "PRIVILEGE_INHERITANCE_MULTI_AGENT",
+      "group": "AGENT",
+      "description": "Наследование / эскалация привилегий в multi-agent системе",
+      "evidence_guide": "Код: дочерний/делегированный агент наследует полные привилегии родительского (child.permissions = parent.permissions / child.tools = parent.tools); нет privilege downgrade при делегировании; эскалация через цепочку делегаций. Ref: OWASP LLM08, CWE-250, CWE-269 (Improper Privilege Management)",
+      "llm_audit_prompt": "Проанализируй механизм делегирования задач между агентами. Определи: (1) как назначаются привилегии дочернему агенту (наследование / explicit assignment), (2) есть ли privilege downgrade при делегировании, (3) может ли цепочка делегаций привести к эскалации привилегий, (4) соблюдается ли principle of least privilege.",
+      "activated_by_missing": "UMF-044",
+      "risks": [
+        "AGENCY",
+        "GH_RCE",
+        "MULTI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-065": {
+      "id": "UFR-065",
+      "short_name": "NL_INTER_AGENT_MSG",
+      "group": "AGENT",
+      "description": "Передача естественноязыковых инструкций между агентами вместо структурированного формата",
+      "evidence_guide": "Код: agent_A.send(agent_B, message=natural_language_string) — передача инструкций между агентами в виде естественного языка вместо structured JSON Schema / protobuf; позволяет injection через NL-канал. Ref: OWASP LLM01 (Indirect Injection via Agent Communication)",
+      "llm_audit_prompt": "Проанализируй формат межагентных сообщений. Определи: (1) используется ли структурированный формат (JSON Schema, protobuf, typed messages), (2) передаются ли инструкции в виде natural language строк, (3) валидируется ли формат сообщений при приёме, (4) может ли злоумышленник внедрить инструкции через NL-канал.",
+      "activated_by_missing": "UMF-047",
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-066": {
+      "id": "UFR-066",
+      "short_name": "CASCADING_UNVALIDATED_PIPELINE",
+      "group": "AGENT",
+      "description": "Каскадная передача через N агентов без промежуточной валидации",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-047",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "MULTI"
+      ]
+    },
+    "UFR-067": {
+      "id": "UFR-067",
+      "short_name": "SHARED_STATE_UNRESTRICTED",
+      "group": "AGENT",
+      "description": "Общая разделяемая память / контекст между агентами без изоляции записи",
+      "evidence_guide": "Код: shared_state / shared_memory = {} доступен всем агентам на чтение и запись; нет write lock, нет owner check, нет validation gateway; один агент может перезаписать данные другого или отравить shared state. Ref: OWASP LLM08, CWE-362 (Race Condition), CWE-284",
+      "llm_audit_prompt": "Проанализируй shared state между агентами. Определи: (1) есть ли общая память/контекст, доступная нескольким агентам, (2) есть ли write lock / mutex, (3) проверяется ли owner/agent_id при записи, (4) валидируется ли контент при записи через gateway, (5) может ли один агент перезаписать данные другого.",
+      "activated_by_missing": "UMF-049",
+      "risks": [
+        "HALL",
+        "MULTI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-068": {
+      "id": "UFR-068",
+      "short_name": "DYNAMIC_AGENT_SPAWN",
+      "group": "AGENT",
+      "description": "Динамическое создание агентов / дочерних агентов без контроля",
+      "evidence_guide": "Код: Agent.spawn(config) / create_agent(params) вызывается динамически; нет лимита на количество дочерних агентов; нет approval process для создания; может привести к неконтролируемой proliferation и resource exhaustion. Ref: OWASP LLM08, OWASP LLM10, CWE-400",
+      "llm_audit_prompt": "Найди в коде все места динамического создания агентов. Определи: (1) есть ли лимит на количество одновременных агентов, (2) требуется ли approval для создания, (3) какие привилегии получает новый агент, (4) есть ли lifecycle management (auto-terminate, TTL).",
+      "activated_by_missing": null,
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-069": {
+      "id": "UFR-069",
+      "short_name": "ORCHESTRATOR_SUPERUSER",
+      "group": "AGENT",
+      "description": "Оркестратор с суперпривилегиями / все агенты в одном процессе",
+      "evidence_guide": "Код: оркестратор работает с admin/root credentials; все агенты запущены в одном процессе/контейнере без isolation; компрометация одного агента = компрометация всей системы. Ref: OWASP LLM08, CWE-250, defense in depth principle",
+      "llm_audit_prompt": "Проанализируй привилегии оркестратора и изоляцию агентов. Определи: (1) с какими credentials работает оркестратор (admin/root/service account), (2) работают ли агенты в отдельных процессах/контейнерах или в одном, (3) есть ли blast radius limitation при компрометации одного агента.",
+      "activated_by_missing": "UMF-041",
+      "risks": [
+        "MULTI"
+      ]
+    },
+    "UFR-070": {
+      "id": "UFR-070",
+      "short_name": "RAW_OUTPUT_TO_USER",
+      "group": "OUT",
+      "description": "Прямая трансляция ответа LLM пользователю без фильтрации",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-011",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "LEAK"
+      ]
+    },
+    "UFR-071": {
+      "id": "UFR-071",
+      "short_name": "UNSAFE_OUTPUT_RENDER",
+      "group": "OUT",
+      "description": "Рендеринг HTML/Markdown в ответе LLM без экранирования спецсимволов",
+      "evidence_guide": "Код: render(llm_output) / innerHTML = llm_response без вызова html.escape() / DOMPurify.sanitize(); Markdown rendered без sanitization; нет Content-Security-Policy header; позволяет XSS через LLM-generated content. Ref: OWASP LLM02 (Insecure Output Handling), CWE-79 (XSS)",
+      "llm_audit_prompt": "Найди все места рендеринга LLM output в UI. Определи: (1) используется ли html.escape() / DOMPurify перед рендерингом, (2) рендерится ли Markdown и если да — sanitized ли он, (3) установлен ли Content-Security-Policy header, (4) может ли LLM output содержать <script>, <img onerror>, <a onclick> и другие XSS vectors.",
+      "activated_by_missing": "UMF-012",
+      "risks": [
+        "DPI",
+        "IPI",
+        "TOXIC"
+      ]
+    },
+    "UFR-072": {
+      "id": "UFR-072",
+      "short_name": "UNVALIDATED_DOWNSTREAM",
+      "group": "OUT",
+      "description": "Передача вывода LLM в downstream-системы без валидации",
+      "evidence_guide": "Код: llm_output → db.execute(llm_sql) / api.call(llm_params) / file.write(llm_content) / os.system(llm_command) без предварительной валидации output по schema; LLM output трактуется как trusted input для downstream систем. Ref: OWASP LLM02, CWE-74 (Injection), CWE-89 (SQL Injection)",
+      "llm_audit_prompt": "Найди все места, где LLM output передаётся в downstream системы. Для каждого определи: (1) куда передаётся (DB, API, файл, OS command, email), (2) валидируется ли output по schema перед передачей, (3) используется ли parameterized query / prepared statement для DB, (4) может ли вредоносный LLM output вызвать injection в downstream системе.",
+      "activated_by_missing": "UMF-011",
+      "risks": [
+        "DPI",
+        "GH_RCE",
+        "HALL",
+        "KNOW",
+        "LEAK",
+        "TOXIC"
+      ]
+    },
+    "UFR-073": {
+      "id": "UFR-073",
+      "short_name": "UNVALIDATED_GENERATED_URLS",
+      "group": "OUT",
+      "description": "URL/API endpoints в ответах LLM передаются пользователю без проверки существования и доступности",
+      "evidence_guide": "Код: URL в LLM response передаётся пользователю или используется для fetch без проверки существования домена (dns resolve), без проверки в URL reputation list; LLM может галлюцинировать URL, ведущий на фишинговый или malware сайт. Ref: OWASP LLM02, OWASP LLM09, связан с slopsquatting",
+      "llm_audit_prompt": "Найди все места, где URL из LLM output обрабатываются. Определи: (1) проверяется ли существование домена (DNS resolve), (2) проверяется ли URL по reputation/blocklist, (3) отображается ли URL пользователю или автоматически открывается/fetched, (4) есть ли sandbox/preview для ссылок.",
+      "activated_by_missing": "UMF-094",
+      "risks": [
+        "DISINFO",
+        "HALL"
+      ]
+    },
+    "UFR-074": {
+      "id": "UFR-074",
+      "short_name": "UNMARKED_AI_OUTPUT",
+      "group": "OUT",
+      "description": "AI-контент передаётся без маркировки / без disclosure",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-064",
+      "risks": [
+        "DISINFO",
+        "HALL"
+      ]
+    },
+    "UFR-075": {
+      "id": "UFR-075",
+      "short_name": "NO_CONFIDENCE_SIGNAL",
+      "group": "OUT",
+      "description": "Ответы LLM передаются пользователю с единообразным оформлением, без индикатора уверенности модели",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-065",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-076": {
+      "id": "UFR-076",
+      "short_name": "OVERRELIANCE_UX",
+      "group": "OUT",
+      "description": "UI/UX дизайн провоцирующий overreliance / auto-accept без friction",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-066",
+      "risks": [
+        "DISINFO",
+        "HALL",
+        "KNOW"
+      ]
+    },
+    "UFR-077": {
+      "id": "UFR-077",
+      "short_name": "CRITICAL_DECISIONS_NO_HUMAN",
+      "group": "OUT",
+      "description": "Автоматическое принятие критичных решений (медицина, финансы, юриспруденция) с прямой передачей пользователю без human review",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-021",
+      "risks": [
+        "HALL",
+        "KNOW",
+        "TOXIC"
+      ]
+    },
+    "UFR-078": {
+      "id": "UFR-078",
+      "short_name": "SYNTHETIC_PERSONA_IMPERSONATION",
+      "group": "OUT",
+      "description": "Генерация контента от имени реальных лиц",
+      "evidence_guide": "Код/промпт: LLM генерирует контент от имени конкретного реального лица (подпись, стиль, мнение attributed to a real person); нет impersonation guard / attribution check в output pipeline. Ref: OWASP LLM09 (Misinformation), EU AI Act Art. 50 (transparency obligations)",
+      "llm_audit_prompt": "Проанализируй может ли система генерировать контент от имени реальных лиц. Определи: (1) есть ли в промптах или функционале генерация от имени конкретных людей, (2) есть ли impersonation detection в output pipeline, (3) маркируется ли AI-generated контент как синтетический.",
+      "activated_by_missing": "UMF-068",
+      "risks": [
+        "DISINFO"
+      ]
+    },
+    "UFR-079": {
+      "id": "UFR-079",
+      "short_name": "NO_FACTCHECK_PIPELINE",
+      "group": "OUT",
+      "description": "Ответы LLM передаются пользователю / в downstream без промежуточной верификации фактов",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-036",
+      "risks": [
+        "DISINFO",
+        "HALL"
+      ]
+    },
+    "UFR-081": {
+      "id": "UFR-081",
+      "short_name": "PROMPT_INJECTION_BYPASSES_SAFETY",
+      "group": "OUT",
+      "description": "Safety-фильтры на выводе LLM применяются без защиты от обхода через prompt injection (одноуровневая фильтрация)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-093",
+      "risks": [
+        "DISINFO"
+      ]
+    },
+    "UFR-082": {
+      "id": "UFR-082",
+      "short_name": "SHARED_WIDE_API_KEY",
+      "group": "INFRA",
+      "description": "Единый API-ключ с широкими правами / общие credentials",
+      "evidence_guide": "Конфиг: один API_KEY / token с admin/write scope используется для всех LLM операций; shared credentials между несколькими сервисами; нет per-tool / per-function API keys; компрометация одного ключа даёт доступ ко всем операциям. Ref: OWASP LLM08, CWE-798, CWE-250, principle of least privilege",
+      "llm_audit_prompt": "Проанализируй использование API-ключей и credentials. Определи: (1) сколько API-ключей используется (один для всего или раздельные), (2) какие scopes/permissions у каждого ключа, (3) используются ли shared credentials между сервисами, (4) соблюдается ли principle of least privilege для каждого ключа.",
+      "activated_by_missing": "UMF-041",
+      "risks": [
+        "AGENCY",
+        "DPI",
+        "LEAK",
+        "MULTI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-083": {
+      "id": "UFR-083",
+      "short_name": "EXCESSIVE_DB_PRIVILEGES",
+      "group": "INFRA",
+      "description": "Доступ LLM к БД с избыточными привилегиями / без row-level security",
+      "evidence_guide": "Конфиг DB: LLM service account имеет роль db_owner / SUPERUSER / ALL PRIVILEGES; нет row-level security (RLS); SELECT * без WHERE user_id = current_user; LLM может читать/изменять данные любого пользователя. Ref: OWASP LLM06, OWASP LLM08, CWE-250, CWE-862",
+      "llm_audit_prompt": "Проанализируй привилегии DB-аккаунта LLM-сервиса. Определи: (1) какая роль (SUPERUSER, db_owner, read-only, custom), (2) включена ли row-level security, (3) фильтруются ли запросы по user_id/tenant_id, (4) может ли LLM прочитать/изменить данные другого пользователя.",
+      "activated_by_missing": "UMF-042",
+      "risks": [
+        "AGENCY",
+        "LEAK"
+      ]
+    },
+    "UFR-084": {
+      "id": "UFR-084",
+      "short_name": "EXCESSIVE_OAUTH_SCOPES",
+      "group": "INFRA",
+      "description": "OAuth scopes шире необходимого",
+      "evidence_guide": "OAuth config: scope включает permissions шире необходимых для задачи (write, delete, admin, manage при необходимости только read); излишне широкий scope увеличивает blast radius при компрометации. Ref: OWASP LLM08, CWE-250, OAuth 2.0 Security Best Practices (RFC 6819)",
+      "llm_audit_prompt": "Проанализируй OAuth scopes для всех интеграций. Для каждой определи: (1) какие scopes запрошены, (2) какие scopes реально необходимы для функционала, (3) есть ли избыточные permissions (write/delete/admin при необходимости read).",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY"
+      ]
+    },
+    "UFR-085": {
+      "id": "UFR-085",
+      "short_name": "SERVICE_ACCOUNT_WIDE",
+      "group": "INFRA",
+      "description": "Сервисный аккаунт с широкими правами",
+      "evidence_guide": "IAM / service account: роль с широкими правами (Editor, Admin, Owner) вместо custom role с минимальными необходимыми permissions; не соблюдается principle of least privilege. Ref: OWASP LLM08, CWE-250, NIST SP 800-53 AC-6",
+      "llm_audit_prompt": "Проанализируй IAM роли и service accounts. Для каждого определи: (1) какая роль назначена (predefined broad role vs custom minimal), (2) какие permissions реально используются, (3) можно ли сузить роль без потери функциональности.",
+      "activated_by_missing": null,
+      "risks": [
+        "AGENCY"
+      ]
+    },
+    "UFR-086": {
+      "id": "UFR-086",
+      "short_name": "SECRETS_IN_ENV_PLAIN",
+      "group": "INFRA",
+      "description": "Секреты в ENV / config / docker-compose / .env в открытом виде",
+      "evidence_guide": "Файлы: .env, docker-compose.yml, config.yaml, appsettings.json содержат пароли, API-ключи, connection strings в plaintext; нет ссылок на secrets manager (Vault, AWS SM, GCP SM); секреты могут попасть в git history / Docker image. Ref: CWE-798, CWE-312 (Cleartext Storage), OWASP LLM06",
+      "llm_audit_prompt": "Проверь файлы конфигурации на наличие секретов в plaintext: .env, docker-compose.yml, config.yaml, appsettings.json, terraform.tfvars, helm values. Найди: (1) API-ключи, пароли, токены в открытом виде, (2) connection strings с credentials, (3) проверь, используется ли secrets manager (Vault, AWS Secrets Manager, GCP Secret Manager), (4) проверь git history на committed secrets.",
+      "activated_by_missing": null,
+      "risks": [
+        "DPI",
+        "GH_RCE",
+        "LEAK",
+        "SUPPLY"
+      ]
+    },
+    "UFR-088": {
+      "id": "UFR-088",
+      "short_name": "UNRESTRICTED_EGRESS",
+      "group": "INFRA",
+      "description": "Неограниченный исходящий сетевой трафик (egress без whitelist)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-055",
+      "risks": [
+        "AGENCY",
+        "DPI",
+        "GH_RCE",
+        "IPI",
+        "MULTI",
+        "SUPPLY"
+      ]
+    },
+    "UFR-093": {
+      "id": "UFR-093",
+      "short_name": "DATA_SENT_TO_PROVIDER",
+      "group": "INFRA",
+      "description": "Отправка данных пользователей в API внешнего провайдера",
+      "evidence_guide": "Код: requests.post(provider_api_url, json={'messages': [{...user_data...}]}) — PII, конфиденциальные документы, внутренние данные отправляются в API внешнего LLM-провайдера; данные могут использоваться для training; нет PII masking перед отправкой. Ref: OWASP LLM06, GDPR Art. 28 (Data Processing), NIST AI RMF GOVERN 1.6",
+      "llm_audit_prompt": "Проанализируй какие данные отправляются к LLM-провайдеру. Определи: (1) содержат ли промпты PII / конфиденциальные данные, (2) выполняется ли PII masking/anonymization перед отправкой, (3) включён ли opt-out из training у провайдера, (4) где geographic location провайдера (для compliance с GDPR, локализацией данных).",
+      "activated_by_missing": null,
+      "risks": [
+        "LEAK"
+      ]
+    },
+    "UFR-094": {
+      "id": "UFR-094",
+      "short_name": "UNPINNED_DEPS",
+      "group": "INFRA",
+      "description": "Зависимости без фиксации версий / с известными CVE / без SCA",
+      "evidence_guide": "requirements.txt / package.json / Pipfile: зависимости без фиксации версий (нет == / @ / lock-файла); известные CVE в текущих версиях deps; нет SCA (Software Composition Analysis) pipeline. Ref: OWASP LLM05, CWE-1104 (Use of Unmaintained Third-Party Components), NIST SP 800-218",
+      "llm_audit_prompt": "Проанализируй зависимости проекта. Определи: (1) зафиксированы ли версии (== в requirements.txt, lock-файл), (2) есть ли SCA сканирование в CI/CD (Snyk, Dependabot, safety, npm audit), (3) есть ли известные CVE в текущих зависимостях, (4) сгенерирован ли SBOM.",
+      "activated_by_missing": null,
+      "risks": [
+        "SUPPLY"
+      ]
+    },
+    "UFR-095": {
+      "id": "UFR-095",
+      "short_name": "UNVERIFIED_MODEL_SOURCE",
+      "group": "INFRA",
+      "description": "Загрузка модели / embedding / LoRA из непроверенного источника без hash check",
+      "evidence_guide": "Код: model.download(url) / from_pretrained(model_name) без verify_hash(); source не в trusted registry (HuggingFace verified, private registry); нет signature check; модель может быть подменена. Ref: OWASP LLM05, CWE-494, MITRE ATLAS AML.T0047 (ML Supply Chain Compromise)",
+      "llm_audit_prompt": "Найди все места загрузки моделей. Для каждого определи: (1) откуда загружается модель (URL, registry, path), (2) проверяется ли hash/checksum при загрузке, (3) используется ли trusted registry с верификацией, (4) есть ли signature verification.",
+      "activated_by_missing": null,
+      "risks": [
+        "SUPPLY"
+      ]
+    },
+    "UFR-096": {
+      "id": "UFR-096",
+      "short_name": "PICKLE_DESERIALIZATION",
+      "group": "INFRA",
+      "description": "Небезопасная десериализация моделей (pickle)",
+      "evidence_guide": "Код: torch.load(model_file) / pickle.load(model_file) — загрузка модели через pickle; pickle позволяет arbitrary code execution при десериализации; безопасные альтернативы: safetensors, ONNX, TorchScript. Ref: OWASP LLM05, CWE-502, MITRE ATLAS AML.T0047",
+      "llm_audit_prompt": "Найди все места загрузки ML-моделей. Определи: (1) используется ли pickle/torch.load для десериализации, (2) используется ли безопасный формат (safetensors, ONNX, TorchScript), (3) из доверенного ли источника загружается файл модели.",
+      "activated_by_missing": null,
+      "risks": [
+        "SUPPLY"
+      ]
+    },
+    "UFR-098": {
+      "id": "UFR-098",
+      "short_name": "CICD_NO_SIGN_VERIFY",
+      "group": "INFRA",
+      "description": "CI/CD pipeline выпускает артефакты без криптографической подписи; prod secrets доступны из feature branches",
+      "evidence_guide": "CI/CD config: артефакты (Docker images, binaries, packages) публикуются без криптографической подписи (cosign, Sigstore, GPG); prod secrets доступны из feature branches (нет branch protection); нет SLSA provenance. Ref: OWASP LLM05, SLSA framework, CWE-494",
+      "llm_audit_prompt": "Проанализируй CI/CD pipeline security: (1) подписываются ли артефакты (cosign, Sigstore, GPG), (2) защищены ли prod secrets от доступа из feature branches (branch protection), (3) генерируется ли SLSA provenance, (4) есть ли approval gates перед deploy в production.",
+      "activated_by_missing": "UMF-083",
+      "risks": [
+        "SUPPLY"
+      ]
+    },
+    "UFR-100": {
+      "id": "UFR-100",
+      "short_name": "MODEL_REGISTRY_NO_RBAC",
+      "group": "INFRA",
+      "description": "Реестр моделей открыт для чтения и записи всем участникам, разграничение доступа (RBAC) не применяется",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-080",
+      "risks": [
+        "SUPPLY"
+      ]
+    },
+    "UFR-101": {
+      "id": "UFR-101",
+      "short_name": "USER_MODEL_SELECTOR",
+      "group": "INFRA",
+      "description": "Пользователь может выбирать модель из произвольного списка, включая модели без model card и safety evaluation",
+      "evidence_guide": "UI: пользователь может выбрать модель из dropdown / ввести model name; нет allow-list одобренных моделей; доступны модели без model card, без safety evaluation, без known capabilities assessment. Ref: OWASP LLM05, NIST AI RMF MAP 2.1, EU AI Act Art. 13",
+      "llm_audit_prompt": "Проверь функционал выбора модели пользователем. Определи: (1) может ли пользователь выбрать произвольную модель, (2) есть ли allow-list одобренных моделей, (3) есть ли model card / safety evaluation для каждой доступной модели, (4) может ли пользователь ввести произвольное имя модели.",
+      "activated_by_missing": null,
+      "risks": [
+        "TOXIC"
+      ]
+    },
+    "UFR-102": {
+      "id": "UFR-102",
+      "short_name": "NO_LLM_AUDIT_LOG",
+      "group": "GOV",
+      "description": "Запросы и ответы LLM обрабатываются в обход аудиторского логирования (audit-middleware)",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-059",
+      "risks": [
+        "DISINFO",
+        "LEAK"
+      ]
+    },
+    "UFR-103": {
+      "id": "UFR-103",
+      "short_name": "NO_ABUSE_MONITORING",
+      "group": "GOV",
+      "description": "API обслуживает запросы к LLM без ограничения частоты (rate limiting) и без детекции паттернов злоупотреблений",
+      "evidence_guide": "",
+      "llm_audit_prompt": "",
+      "activated_by_missing": "UMF-028",
+      "risks": [
+        "DISINFO"
+      ]
+    }
+  },
+  "mitigations": {
+    "UMF-001": {
+      "id": "UMF-001",
+      "short_name": "INPUT_SCHEMA_VALIDATION",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Валидация входных данных по JSON-схеме, ограничение длины, enum",
+      "evidence_guide": "Код: middleware / decorator с JSON Schema validation (jsonschema.validate, Zod, Pydantic) на каждом input endpoint; maxLength задан для текстовых полей; enum для categorical; regex pattern для structured input. Ref: OWASP ASVS V5, CWE-20",
+      "activates_ufr": null
+    },
+    "UMF-002": {
+      "id": "UMF-002",
+      "short_name": "ENCODING_NORMALIZE",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Нормализация кодировок и удаление невидимых / управляющих символов Unicode",
+      "evidence_guide": "Код: вызов unicodedata.normalize('NFC') или эквивалент перед обработкой; фильтрация zero-width символов (U+200B, U+FEFF); удаление control characters; блокировка RTL override (U+202E). Ref: CWE-176, Unicode Security Annex #36",
+      "activates_ufr": null
+    },
+    "UMF-003": {
+      "id": "UMF-003",
+      "short_name": "UNIFIED_INPUT_PIPELINE",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Единая входная pipeline валидации для всех каналов",
+      "evidence_guide": "Архитектура: единый gateway / middleware обрабатывает ВСЕ каналы ввода (REST, WebSocket, webhook, email, Slack, MCP) с одинаковым набором проверок; нет bypass. Ref: OWASP ASVS V5, defense in depth",
+      "activates_ufr": null
+    },
+    "UMF-004": {
+      "id": "UMF-004",
+      "short_name": "INPUT_TOXICITY_CLASSIFIER",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Классификатор токсичности / injection pattern filter на входе",
+      "evidence_guide": "Код: классификатор / regex filter / ML-модель на входе, проверяющий injection patterns и токсичность; вызывается ДО передачи в LLM; результат: block / flag / sanitize. Ref: OWASP LLM01, NIST AI RMF MANAGE 2.4",
+      "activates_ufr": null
+    },
+    "UMF-005": {
+      "id": "UMF-005",
+      "short_name": "STRIP_HIDDEN_CONTENT",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Удаление скрытого текста и невидимых элементов из документов",
+      "evidence_guide": "Код парсера: strip_hidden_text() / remove_invisible() после парсинга документа; удаление: white-on-white text, font-size:0, display:none, hidden metadata, embedded OLE. Ref: OWASP LLM01",
+      "activates_ufr": "UFR-010"
+    },
+    "UMF-006": {
+      "id": "UMF-006",
+      "short_name": "PROMPT_STRUCTURED_SEPARATION",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Структурированный system prompt с именованными секциями (role, constraints, output_format, safety) и маркировкой границ секций",
+      "evidence_guide": "System prompt: именованные секции с маркерами границ (## Role, ## Constraints, ## Output Format, ## Safety, или XML-теги); каждая секция — только свой тип инструкций. Ref: OWASP LLM01",
+      "activates_ufr": "UFR-015"
+    },
+    "UMF-007": {
+      "id": "UMF-007",
+      "short_name": "GOAL_LOCK_INSTRUCTION",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Явное определение целей, goal-lock, запрет смены роли, инструкция о заземлении",
+      "evidence_guide": "System prompt: явный goal-lock, запрет смены роли, инструкция игнорировать override-попытки, заземление на источники данных. Ref: OWASP LLM01",
+      "activates_ufr": "UFR-013"
+    },
+    "UMF-008": {
+      "id": "UMF-008",
+      "short_name": "SECRETS_EXTERNALIZE",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Вынос конфиденциальных данных из промпта в secrets manager",
+      "evidence_guide": "Код / конфиг: секреты в secrets manager (Vault, AWS SM, GCP SM); подставляются через ссылки; в промпте нет plaintext credentials. Ref: CWE-798, OWASP LLM06",
+      "activates_ufr": null
+    },
+    "UMF-009": {
+      "id": "UMF-009",
+      "short_name": "PII_MASKING_PRE_LLM",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Маскирование PII в промпте перед отправкой в LLM",
+      "evidence_guide": "Код: mask_pii() / anonymize() перед формированием промпта; маскировка email, телефонов, ФИО, SSN; regex или NER для детекции. Ref: OWASP LLM06, GDPR Art. 25",
+      "activates_ufr": null
+    },
+    "UMF-010": {
+      "id": "UMF-010",
+      "short_name": "INSTRUCTION_HIERARCHY",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Явная instruction hierarchy в промпте каждого агента",
+      "evidence_guide": "System prompt каждого агента: явная instruction hierarchy ('системные приоритетнее пользовательских'); уровни приоритета задокументированы. Ref: OWASP LLM01, Anthropic instruction hierarchy",
+      "activates_ufr": "UFR-016"
+    },
+    "UMF-011": {
+      "id": "UMF-011",
+      "short_name": "OUTPUT_SCHEMA_VALIDATION",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Валидация формата / structured output ответа LLM",
+      "evidence_guide": "Код: validate(response, output_schema) перед отправкой; structured output mode; retry/fallback при несоответствии. Ref: OWASP LLM02",
+      "activates_ufr": "UFR-070"
+    },
+    "UMF-012": {
+      "id": "UMF-012",
+      "short_name": "OUTPUT_SANITIZE_HTML",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Экранирование HTML/Markdown; блокировка внешних ссылок; CSP",
+      "evidence_guide": "Код: html.escape() / DOMPurify на LLM output; блокировка external links; CSP header. Ref: CWE-79, OWASP LLM02",
+      "activates_ufr": null
+    },
+    "UMF-013": {
+      "id": "UMF-013",
+      "short_name": "OUTPUT_LEAK_DETECTION",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Проверка вывода на паттерны утечки / PII / секреты / exfiltration",
+      "evidence_guide": "Код: leak_detection() / pii_scan() на output — API keys, credentials, PII, system prompt fragments; mask/block. Ref: OWASP LLM06, CWE-200",
+      "activates_ufr": null
+    },
+    "UMF-014": {
+      "id": "UMF-014",
+      "short_name": "OUTPUT_TOXICITY_CLASSIFIER",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Классификатор токсичности / content safety на выходе LLM",
+      "evidence_guide": "Код: output classifier на toxicity, hate speech, unsafe content; перед отправкой пользователю. Ref: OWASP LLM09, NIST AI RMF MANAGE 2.4",
+      "activates_ufr": null
+    },
+    "UMF-016": {
+      "id": "UMF-016",
+      "short_name": "TOOL_WHITELIST",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Ограниченный набор инструментов / per-agent scoping / step-level binding",
+      "evidence_guide": "Конфиг: tools = whitelist per agent / per step / per task; dangerous tools ограничены контекстом; step-level binding. Ref: OWASP LLM08, least privilege",
+      "activates_ufr": null
+    },
+    "UMF-017": {
+      "id": "UMF-017",
+      "short_name": "TOOL_CALL_SCHEMA_VALIDATION",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Валидация tool call params по JSON Schema + business rules",
+      "evidence_guide": "Код: validation(params, json_schema) перед вызовом tool; типы, диапазоны, бизнес-правила; reject при невалидных params. Ref: OWASP LLM08, CWE-20",
+      "activates_ufr": "UFR-048"
+    },
+    "UMF-018": {
+      "id": "UMF-018",
+      "short_name": "TOOL_OUTPUT_SANITIZATION",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Санитизация tool output от instruction patterns перед включением в контекст",
+      "evidence_guide": "Код: sanitize() / strip_instructions() на tool output; role:'tool' (не system); удаление instruction patterns. Ref: OWASP LLM01",
+      "activates_ufr": null
+    },
+    "UMF-019": {
+      "id": "UMF-019",
+      "short_name": "GRANULAR_TOOLS",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Гранулярные инструменты вместо open-ended; whitelist shell-команд",
+      "evidence_guide": "Tool definitions: гранулярные инструменты; нет open-ended shell/eval; whitelist shell-команд; parameterized SQL. Ref: OWASP LLM08, CWE-78",
+      "activates_ufr": null
+    },
+    "UMF-020": {
+      "id": "UMF-020",
+      "short_name": "DYNAMIC_TOOL_VALIDATION",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Валидация динамических tools: hash/signature, allowlist источников",
+      "evidence_guide": "Код: hash/signature verification для dynamic tools/plugins; allowlist источников; integrity check при загрузке. Ref: OWASP LLM05, CWE-494",
+      "activates_ufr": null
+    },
+    "UMF-021": {
+      "id": "UMF-021",
+      "short_name": "HITL_HIGH_IMPACT",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Human-in-the-Loop для деструктивных / высокоимпактных операций",
+      "evidence_guide": "Код: high-impact операции требуют human approval; HITL dialog с описанием; timeout; fallback. Ref: OWASP LLM08, NIST AI RMF GOVERN 1.4",
+      "activates_ufr": "UFR-077"
+    },
+    "UMF-022": {
+      "id": "UMF-022",
+      "short_name": "IMPACT_CLASSIFICATION",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Классификация действий по уровню импакта с routing",
+      "evidence_guide": "Код / конфиг: каждое действие классифицировано по impact (low/medium/high/critical); routing по уровню; документирована матрица. Ref: OWASP LLM08",
+      "activates_ufr": "UFR-059"
+    },
+    "UMF-023": {
+      "id": "UMF-023",
+      "short_name": "DRY_RUN_PREVIEW",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Dry-run / preview mode для деструктивных операций",
+      "evidence_guide": "Код: dry-run / preview для деструктивных операций; пользователю показывается что будет сделано. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-024": {
+      "id": "UMF-024",
+      "short_name": "ROLLBACK_MECHANISM",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Механизм rollback для каскадных действий",
+      "evidence_guide": "Код: rollback для каскадных действий — transaction, undo, restore; откат при ошибке в середине цепочки. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-026": {
+      "id": "UMF-026",
+      "short_name": "ITERATION_LIMIT",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Max iterations для агентных циклов / planning loop",
+      "evidence_guide": "Код: max_iterations для агентных циклов; timeout на весь цикл; depth limit для planning; graceful exit. Ref: OWASP LLM08, OWASP LLM10, CWE-835",
+      "activates_ufr": null
+    },
+    "UMF-027": {
+      "id": "UMF-027",
+      "short_name": "KILL_SWITCH_CIRCUIT_BREAKER",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Kill switch, circuit breaker, emergency stop",
+      "evidence_guide": "Код / инфра: kill switch — немедленная остановка; circuit breaker с порогом ошибок; emergency stop endpoint; auto-shutdown при anomaly. Ref: OWASP LLM08",
+      "activates_ufr": "UFR-057"
+    },
+    "UMF-028": {
+      "id": "UMF-028",
+      "short_name": "SESSION_BUDGET_CAP",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Budget/cost/token cap на session; rate limiting tool calls",
+      "evidence_guide": "Код: budget cap (max tokens, max cost, max tool calls) на session; rate limit tool calls; graceful stop. Ref: OWASP LLM10",
+      "activates_ufr": "UFR-103"
+    },
+    "UMF-029": {
+      "id": "UMF-029",
+      "short_name": "EXPONENTIAL_BACKOFF",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Exponential backoff с max retries; LLM call timeout",
+      "evidence_guide": "Код: exponential backoff (delay = base * 2^attempt); max_retries; timeout на LLM call; fail с информативной ошибкой. Ref: OWASP LLM10",
+      "activates_ufr": null
+    },
+    "UMF-030": {
+      "id": "UMF-030",
+      "short_name": "REPETITION_DETECTION",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Детекция repetition / self-referential patterns",
+      "evidence_guide": "Код: детектор повторений / self-referential patterns; при loop — alert + break + fallback. Ref: OWASP LLM09",
+      "activates_ufr": null
+    },
+    "UMF-031": {
+      "id": "UMF-031",
+      "short_name": "RAG_GROUNDING",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "RAG с верифицированными источниками, citation enforcement",
+      "evidence_guide": "System prompt: инструкция отвечать на основе источников; citation enforcement; источники верифицированы с allow-list. Ref: OWASP LLM09",
+      "activates_ufr": null
+    },
+    "UMF-033": {
+      "id": "UMF-033",
+      "short_name": "RAG_FRESHNESS_PROCESS",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Документированный процесс актуализации RAG-корпуса с SLA",
+      "evidence_guide": "Документация: процесс актуализации RAG-корпуса с SLA; TTL для документов; автоудаление устаревших; audit trail. Ref: NIST AI RMF MAP 2.3",
+      "activates_ufr": "UFR-039"
+    },
+    "UMF-034": {
+      "id": "UMF-034",
+      "short_name": "RAG_DOCUMENT_ACL",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Сегментация RAG по уровням доступа / namespace isolation",
+      "evidence_guide": "Код RAG: index сегментирован по tenant_id / namespace; metadata filter по access_level при retrieval. Ref: OWASP LLM06, CWE-862",
+      "activates_ufr": null
+    },
+    "UMF-035": {
+      "id": "UMF-035",
+      "short_name": "RAG_CONTENT_AUDIT",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Аудит и фильтрация RAG-базы при индексации",
+      "evidence_guide": "Код: content_audit() / injection_scan() перед индексацией; проверка toxicity, injection patterns; approval для external sources. Ref: OWASP LLM01, OWASP LLM03",
+      "activates_ufr": null
+    },
+    "UMF-036": {
+      "id": "UMF-036",
+      "short_name": "FACT_CHECK_PIPELINE",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Post-generation fact-checking / hallucination detection",
+      "evidence_guide": "Код: post-generation fact-checking — сверка с RAG, cross-reference, hallucination detection; confidence score. Ref: OWASP LLM09",
+      "activates_ufr": "UFR-079"
+    },
+    "UMF-037": {
+      "id": "UMF-037",
+      "short_name": "CHAIN_OF_THOUGHT",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Chain-of-thought prompting; task decomposition",
+      "evidence_guide": "System prompt / код: chain-of-thought prompting; task decomposition; structured reasoning. Ref: OWASP LLM09",
+      "activates_ufr": null
+    },
+    "UMF-038": {
+      "id": "UMF-038",
+      "short_name": "CHUNKING_OVERLAP_STRATEGY",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Стратегия чанкинга с overlap и metadata",
+      "evidence_guide": "Код RAG: chunk_size с учётом document type; overlap > 0; границы по предложениям; metadata linking между чанками. Ref: RAG best practices",
+      "activates_ufr": null
+    },
+    "UMF-040": {
+      "id": "UMF-040",
+      "short_name": "CONFLICT_RESOLUTION_LOGIC",
+      "group": "КОНТРОЛЬ RAG И ДАННЫХ (RAG & Data Controls)",
+      "description": "Логика разрешения конфликтов из RAG",
+      "evidence_guide": "Код: логика приоритетов при конфликтах в RAG (по дате, trust_level, relevance); сигнализация конфликта пользователю. Ref: OWASP LLM09",
+      "activates_ufr": "UFR-038"
+    },
+    "UMF-041": {
+      "id": "UMF-041",
+      "short_name": "LEAST_PRIVILEGE_KEYS",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Раздельные API-ключи / credentials с минимальными правами; per-tool",
+      "evidence_guide": "Конфиг: раздельные API-ключи per tool; минимальные permissions; ротация; нет shared credentials. Ref: OWASP LLM08, CWE-250",
+      "activates_ufr": null
+    },
+    "UMF-042": {
+      "id": "UMF-042",
+      "short_name": "USER_CONTEXT_EXECUTION",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Исполнение в контексте пользователя; row-level security",
+      "evidence_guide": "Код: операции в контексте пользователя (user_id); row-level security; фильтрация по permissions. Ref: OWASP LLM06, CWE-862",
+      "activates_ufr": null
+    },
+    "UMF-043": {
+      "id": "UMF-043",
+      "short_name": "SESSION_ISOLATION",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Изоляция сессий пользователей / user_id scoping",
+      "evidence_guide": "Код: изоляция сессий per user_id; отдельный context, memory, state; нет cross-session leakage. Ref: CWE-200",
+      "activates_ufr": null
+    },
+    "UMF-044": {
+      "id": "UMF-044",
+      "short_name": "MULTI_AGENT_TRUST_BOUNDARY",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Trust boundary между агентами; privilege downgrade",
+      "evidence_guide": "Код: trust boundary per agent; privilege downgrade при делегировании; explicit permission grant. Ref: OWASP LLM08, CWE-250",
+      "activates_ufr": null
+    },
+    "UMF-045": {
+      "id": "UMF-045",
+      "short_name": "CRYPTO_AGENT_IDENTITY",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Криптографическая идентичность агента; per-message auth; mTLS",
+      "evidence_guide": "Код: криптографическая идентичность агента (certificate, key pair); per-message auth; mTLS. Ref: OWASP LLM08, CWE-287",
+      "activates_ufr": null
+    },
+    "UMF-046": {
+      "id": "UMF-046",
+      "short_name": "STATIC_AGENT_REGISTRY",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Реестр агентов с фиксированными ролями и capabilities",
+      "evidence_guide": "Конфиг: реестр агентов с фиксированными ролями и capabilities; immutable после deploy; runtime проверка. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-047": {
+      "id": "UMF-047",
+      "short_name": "INTER_AGENT_OUTPUT_GATE",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Output gate: валидация вывода перед передачей; injection detection",
+      "evidence_guide": "Код: output gate между агентами — валидация + injection detection + schema validation. Ref: OWASP LLM01, OWASP LLM08",
+      "activates_ufr": "UFR-066"
+    },
+    "UMF-048": {
+      "id": "UMF-048",
+      "short_name": "CONTEXT_GROUNDING_TASK_ANCHOR",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Context grounding: якорение сессии на исходную задачу",
+      "evidence_guide": "Код: context grounding — anchor к исходной задаче в каждом LLM call; task description в system prompt на каждом шаге; redirect при drift. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-049": {
+      "id": "UMF-049",
+      "short_name": "STATE_WRITE_GATEWAY",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Shared state с записью через валидирующий gateway; memory controls",
+      "evidence_guide": "Код: shared state через validating gateway; owner/agent_id check; content validation; TTL, max entries, scope isolation. Ref: OWASP LLM08, CWE-284",
+      "activates_ufr": null
+    },
+    "UMF-050": {
+      "id": "UMF-050",
+      "short_name": "OUTPUT_TRIMMER_NO_COT",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Output trimmer: передача только финального результата без CoT",
+      "evidence_guide": "Код: output trimmer — передача только финального результата без CoT/scratchpad/reasoning. Ref: OWASP LLM06",
+      "activates_ufr": null
+    },
+    "UMF-051": {
+      "id": "UMF-051",
+      "short_name": "SANDBOX_EXECUTION",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Sandbox-изоляция для code execution в hardened environment",
+      "evidence_guide": "Инфра: code execution в sandbox (gVisor, Firecracker, nsjail); drop ALL caps, no-new-privileges, network isolation, read-only FS, timeout. Ref: OWASP LLM08, CWE-94",
+      "activates_ufr": null
+    },
+    "UMF-052": {
+      "id": "UMF-052",
+      "short_name": "EVAL_EXEC_PROHIBITION",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Запрет eval()/exec() на LLM output; parameterized SQL",
+      "evidence_guide": "Код: нет eval()/exec() на LLM output; parameterized SQL; yaml.safe_load(); json.loads() без custom hooks. Ref: CWE-502, CWE-94",
+      "activates_ufr": null
+    },
+    "UMF-053": {
+      "id": "UMF-053",
+      "short_name": "CODE_APPROVAL_GATE",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Разделение генерации и исполнения кода с approval gate",
+      "evidence_guide": "Архитектура: генерация и исполнение кода разделены; approval gate; static analysis перед исполнением. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-055": {
+      "id": "UMF-055",
+      "short_name": "NETWORK_ISOLATION",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Сетевая изоляция / egress whitelist / DNS-фильтрация",
+      "evidence_guide": "K8s / Docker: NetworkPolicy с egress ограничениями; whitelist доменов; DNS-фильтрация; блокировка metadata (169.254.169.254). Ref: CWE-918, NIST SP 800-190",
+      "activates_ufr": "UFR-088"
+    },
+    "UMF-056": {
+      "id": "UMF-056",
+      "short_name": "SECRETS_MANAGER",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Secrets manager; изоляция от code interpreter; авто-ротация",
+      "evidence_guide": "Код / инфра: secrets в manager (Vault, AWS SM); изолированы от code interpreter; авто-ротация; audit log. Ref: CWE-798, CWE-312",
+      "activates_ufr": null
+    },
+    "UMF-059": {
+      "id": "UMF-059",
+      "short_name": "LLM_AUDIT_LOGGING",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Логирование всех запросов/ответов LLM с метаданными",
+      "evidence_guide": "Код: все LLM запросы/ответы логируются с метаданными (timestamp, user_id, model, tokens, latency); structured JSON; PII masking; retention policy. Ref: OWASP LLM06, NIST AI RMF GOVERN 1.5",
+      "activates_ufr": "UFR-102"
+    },
+    "UMF-060": {
+      "id": "UMF-060",
+      "short_name": "ANOMALY_DETECTION_ALERTING",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Anomaly detection на tool calls / injection / token anomalies",
+      "evidence_guide": "Код / инфра: anomaly detection — tool call spikes, injection attempts, token anomalies; alerting (PagerDuty, Slack). Ref: NIST AI RMF MANAGE 2.4",
+      "activates_ufr": null
+    },
+    "UMF-061": {
+      "id": "UMF-061",
+      "short_name": "DISTRIBUTED_TRACING",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Distributed tracing (OpenTelemetry) / chain observability",
+      "evidence_guide": "Код: distributed tracing (OpenTelemetry, Jaeger); полная цепочка request→LLM→tools→response; trace_id. Ref: NIST AI RMF MANAGE 2.4",
+      "activates_ufr": null
+    },
+    "UMF-062": {
+      "id": "UMF-062",
+      "short_name": "HALLUCINATION_MONITORING",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Мониторинг метрик hallucination rate в production",
+      "evidence_guide": "Код / инфра: мониторинг hallucination rate — grounding score, factual accuracy; dashboard; alerting при деградации. Ref: OWASP LLM09",
+      "activates_ufr": null
+    },
+    "UMF-063": {
+      "id": "UMF-063",
+      "short_name": "CANARY_DOCUMENTS",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Canary-документы / canary prompts для обнаружения нарушений",
+      "evidence_guide": "Конфиг: canary-документы в RAG с маркером; canary prompts; alert при появлении canary в output. Ref: honeytoken practices",
+      "activates_ufr": null
+    },
+    "UMF-064": {
+      "id": "UMF-064",
+      "short_name": "AI_CONTENT_LABELING",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Видимый лейбл AI-generated; C2PA provenance; watermark",
+      "evidence_guide": "UI / код: видимый лейбл AI-generated; C2PA provenance; watermark. Ref: EU AI Act Art. 50, NIST AI RMF GOVERN 1.7",
+      "activates_ufr": "UFR-074"
+    },
+    "UMF-065": {
+      "id": "UMF-065",
+      "short_name": "CONFIDENCE_VISUALIZATION",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Confidence scoring с отображением в UI; uncertainty signal",
+      "evidence_guide": "UI: confidence score рядом с ответом; uncertainty signal (цвет, прогресс-бар); предупреждение при низком confidence. Ref: NIST AI RMF MAP 2.3",
+      "activates_ufr": "UFR-075"
+    },
+    "UMF-067": {
+      "id": "UMF-067",
+      "short_name": "USER_FEEDBACK_LOOP",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Механизм обратной связи от пользователей с escalation",
+      "evidence_guide": "UI: feedback (thumbs, report, form); escalation workflow; feedback → improvement pipeline. Ref: NIST AI RMF MANAGE 3.1",
+      "activates_ufr": null
+    },
+    "UMF-068": {
+      "id": "UMF-068",
+      "short_name": "IMPERSONATION_GUARD",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Детекция и блокировка impersonation",
+      "evidence_guide": "Код: impersonation guard — детекция генерации от имени реальных лиц; блокировка attribution; NER/pattern detection. Ref: OWASP LLM09, EU AI Act Art. 50",
+      "activates_ufr": null
+    },
+    "UMF-069": {
+      "id": "UMF-069",
+      "short_name": "ADVERSARIAL_CI_TESTS",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Adversarial / red team тесты в CI/CD pipeline",
+      "evidence_guide": "CI: adversarial тесты (injection, jailbreak, bias probes, safety boundaries); red team. Ref: NIST AI RMF MANAGE 4.1",
+      "activates_ufr": "UFR-104"
+    },
+    "UMF-071": {
+      "id": "UMF-071",
+      "short_name": "DOCUMENTED_GOALS_ACTIONS",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Документированные allowed goals, actions, autonomy boundaries",
+      "evidence_guide": "Документация: allowed goals, actions, autonomy boundaries per agent; матрица агент×действие→allow/deny/HITL; версионирование. Ref: OWASP LLM08, NIST AI RMF GOVERN 1.4",
+      "activates_ufr": "UFR-106"
+    },
+    "UMF-073": {
+      "id": "UMF-073",
+      "short_name": "DOMAIN_SPECIFIC_VERIFICATION",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Domain-specific верификация (код, юриспруденция, медицина, финансы)",
+      "evidence_guide": "Код: domain-specific verification — медицина (дозировки), юриспруденция (ссылки), финансы (расчёты), код (lint, tests). Ref: OWASP LLM09",
+      "activates_ufr": "UFR-109"
+    },
+    "UMF-076": {
+      "id": "UMF-076",
+      "short_name": "EVAL_BENCHMARK_SUITE",
+      "group": "GOVERNANCE И МОНИТОРИНГ (Governance, Monitoring & Process)",
+      "description": "Evaluation-бенчмарки; regression testing при обновлении модели",
+      "evidence_guide": "CI: evaluation benchmark при обновлении модели/промпта; regression testing (accuracy, safety, bias, latency); деградация блокирует deploy. Ref: NIST AI RMF MANAGE 2.2",
+      "activates_ufr": null
+    },
+    "UMF-077": {
+      "id": "UMF-077",
+      "short_name": "MODEL_VERSION_PINNING",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Фиксация версии модели с evaluation",
+      "evidence_guide": "Конфиг: модель зафиксирована по версии (gpt-4o-2024-08-06); auto_upgrade отключён; evaluation suite перед сменой; lock-файл. Ref: OWASP LLM05, NIST AI RMF GOVERN 1.5",
+      "activates_ufr": "UFR-108"
+    },
+    "UMF-079": {
+      "id": "UMF-079",
+      "short_name": "PINNED_DEPS_SCA",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Фиксация зависимостей с lock-файлом; SCA; SBOM",
+      "evidence_guide": "Файлы: pinned versions (==, lock); SCA в CI (Snyk, safety, npm audit); SBOM; CVE tracking. Ref: OWASP LLM05, CWE-1104",
+      "activates_ufr": null
+    },
+    "UMF-080": {
+      "id": "UMF-080",
+      "short_name": "MODEL_HASH_VERIFICATION",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Проверка hash модели при загрузке; RBAC для registry",
+      "evidence_guide": "Код: verify_hash() при загрузке модели; trusted registry; RBAC для model registry. Ref: OWASP LLM05, CWE-494, MITRE ATLAS AML.T0047",
+      "activates_ufr": "UFR-100"
+    },
+    "UMF-083": {
+      "id": "UMF-083",
+      "short_name": "CICD_ARTIFACT_SIGNING",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Подпись артефактов CI/CD (SLSA/Sigstore); protected secrets",
+      "evidence_guide": "CI: артефакты подписаны (cosign, Sigstore); SLSA provenance; prod secrets под branch protection. Ref: SLSA, OWASP LLM05",
+      "activates_ufr": null
+    },
+    "UMF-085": {
+      "id": "UMF-085",
+      "short_name": "PRIVATE_REGISTRY_MIRROR",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Приватный proxy-реестр для pip/npm",
+      "evidence_guide": "Инфра: приватный proxy-реестр (Artifactory, Nexus) для pip/npm; блокировка непроверенных пакетов; typosquatting protection. Ref: OWASP LLM05",
+      "activates_ufr": null
+    },
+    "UMF-086": {
+      "id": "UMF-086",
+      "short_name": "PLUGIN_AUDIT_PROCESS",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "Процесс аудита плагинов / MCP-серверов",
+      "evidence_guide": "Документация: процесс аудита плагинов/MCP — code review, security scan, sandbox test; approval trail. Ref: OWASP LLM05, MCP Security",
+      "activates_ufr": null
+    },
+    "UMF-088": {
+      "id": "UMF-088",
+      "short_name": "INTER_AGENT_VERIFICATION",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Промежуточная верификация / consensus между агентами",
+      "evidence_guide": "Код: consensus / cross-check / independent verification между агентами; escalation при disagreement. Ref: NIST AI RMF MAP 2.3",
+      "activates_ufr": null
+    },
+    "UMF-090": {
+      "id": "UMF-090",
+      "short_name": "CONTEXT_MANAGEMENT",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Управление контекстом: суммаризация, sliding window, rotation",
+      "evidence_guide": "Код: sliding window / summarization / rotation старых сообщений; проверка len(context) перед каждым LLM call; при превышении — truncation или summarize. Ref: OWASP LLM10, CWE-400",
+      "activates_ufr": "UFR-022"
+    },
+    "UMF-091": {
+      "id": "UMF-091",
+      "short_name": "GOAL_DRIFT_DETECTION",
+      "group": "УПРАВЛЕНИЕ АВТОНОМНОСТЬЮ (Autonomy & Agent Controls)",
+      "description": "Поведенческий мониторинг goal drift",
+      "evidence_guide": "Код: мониторинг goal drift — сравнение текущего action с исходной задачей; alert + pause + HITL при отклонении; behavioural baseline. Ref: OWASP LLM08",
+      "activates_ufr": null
+    },
+    "UMF-092": {
+      "id": "UMF-092",
+      "short_name": "MEMORY_WRITE_VALIDATION",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Валидация записей в persistent memory; content filter; TTL; scope",
+      "evidence_guide": "Код: memory.write() обёрнут в content_filter(); TTL/expiration; scope привязан к user_id/session_id; нет cross-user записи. Ref: OWASP LLM01, CWE-400",
+      "activates_ufr": null
+    },
+    "UMF-093": {
+      "id": "UMF-093",
+      "short_name": "PROMPT_INJECTION_DEFENSE",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Многоуровневая защита от prompt injection",
+      "evidence_guide": "Код / архитектура: многоуровневая защита от prompt injection — input filter + structural separation + output validation; regex + ML classifier + LLM-as-judge; defence in depth. Ref: OWASP LLM01",
+      "activates_ufr": "UFR-081"
+    },
+    "UMF-094": {
+      "id": "UMF-094",
+      "short_name": "VALIDATED_GENERATED_URLS",
+      "group": "КОНТРОЛЬ ВЫВОДА И ДОСТОВЕРНОСТИ (Output & Veracity Controls)",
+      "description": "Код: проверка URL и package names из LLM output — DNS resolve, registry lookup, reputation; allow-list пакетов. Ref: OWASP LLM02, slopsquatting",
+      "evidence_guide": "Код: проверка URL и package names из LLM output — DNS resolve, registry lookup, reputation; allow-list пакетов. Ref: OWASP LLM02, slopsquatting",
+      "activates_ufr": "UFR-073"
+    },
+    "UMF-095": {
+      "id": "UMF-095",
+      "short_name": "SAFETY_SYSTEM_INSTRUCTION",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Safety-инструкция в system prompt",
+      "evidence_guide": "System prompt: отдельный safety-блок с инструкциями по этике, отказу от вредных запросов, disclaimers; отделён от основных инструкций. Ref: NIST AI RMF GOVERN 1.4",
+      "activates_ufr": null
+    },
+    "UMF-096": {
+      "id": "UMF-096",
+      "short_name": "AUDITED_FEW_SHOT",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Аудированные few-shot примеры без стереотипов",
+      "evidence_guide": "System prompt: few-shot примеры аудированы; без стереотипов по полу, расе, возрасту, национальности; сбалансированы по группам. Ref: NIST AI 100-2, EU AI Act Art. 10",
+      "activates_ufr": null
+    },
+    "UMF-098": {
+      "id": "UMF-098",
+      "short_name": "FETCH_DOMAIN_WHITELIST",
+      "group": "ВАЛИДАЦИЯ ВВОДА (Input Validation)",
+      "description": "Whitelist доменов для web fetch",
+      "evidence_guide": "Код / конфиг: whitelist доменов для web fetch; блокировка внутренних IP (10.x, 172.16.x, 127.x, 169.254.x); DNS resolve check; timeout. Ref: CWE-918, OWASP LLM01",
+      "activates_ufr": null
+    },
+    "UMF-100": {
+      "id": "UMF-100",
+      "short_name": "MCP_ALLOWLIST_PINNED",
+      "group": "КОНТРОЛЬ ИНСТРУМЕНТОВ И КОДА (Tool & Code Controls)",
+      "description": "Allow-list MCP-серверов с pinned versions; inventory audit",
+      "evidence_guide": "Конфиг: allow-list MCP-серверов с pinned versions/hashes; inventory audit; регулярный review. Ref: OWASP LLM05, MCP Security",
+      "activates_ufr": null
+    },
+    "UMF-102": {
+      "id": "UMF-102",
+      "short_name": "MANDATORY_TLS",
+      "group": "ИНФРАСТРУКТУРНАЯ ЗАЩИТА (Infrastructure & Supply Chain)",
+      "description": "TLS 1.2+ для всех соединений",
+      "evidence_guide": "Код / конфиг: TLS 1.2+ для всех соединений (LLM API, DB, inter-service, MCP); certificate validation; нет verify=False. Ref: CWE-319, OWASP ASVS V9",
+      "activates_ufr": null
+    },
+    "UMF-103": {
+      "id": "UMF-103",
+      "short_name": "SEPARATE_SYSTEM_USER_EXTERNAL",
+      "group": "ЗАЩИТА ПРОМПТА И КОНТЕКСТА (Prompt & Context Protection)",
+      "description": "Код: system instructions, user input, external data разделены в messages[] (отдельные role-блоки); внешний контент в <untrusted> / [EXTERNAL]; не конкатенированы в одну строку. Ref: OWASP LLM01",
+      "evidence_guide": "Код: system instructions, user input, external data разделены в messages[] (отдельные role-блоки); внешний контент в <untrusted> / [EXTERNAL]; не конкатенированы в одну строку. Ref: OWASP LLM01",
+      "activates_ufr": "UFR-012"
+    }
+  },
+  "mappings": [
+    {
+      "risk": "DPI",
+      "factor": "UFR-001",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-001",
+      "mitigation": "UMF-059",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-001",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-001",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-004",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-004",
+      "mitigation": "UMF-002",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-005",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-005",
+      "mitigation": "UMF-003",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-012",
+      "mitigation": "UMF-006",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-012",
+      "mitigation": "UMF-059",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-012",
+      "mitigation": "UMF-069",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-006",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-007",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-060",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-069",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-014",
+      "mitigation": "UMF-007",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-014",
+      "mitigation": "UMF-008",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-014",
+      "mitigation": "UMF-013",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-014",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-014",
+      "mitigation": "UMF-056",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-015",
+      "mitigation": "UMF-006",
+      "dual": "UMF-006"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-041",
+      "mitigation": "UMF-016",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-041",
+      "mitigation": "UMF-021",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-041",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-041",
+      "mitigation": "UMF-059",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-043",
+      "mitigation": "UMF-016",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-043",
+      "mitigation": "UMF-021",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-043",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-082",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-071",
+      "mitigation": "UMF-011",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-071",
+      "mitigation": "UMF-012",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-071",
+      "mitigation": "UMF-013",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-072",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-072",
+      "mitigation": "UMF-013",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-020",
+      "mitigation": "UMF-059",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-086",
+      "mitigation": "UMF-056",
+      "dual": null
+    },
+    {
+      "risk": "DPI",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-067",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-095",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-014",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-059",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-001",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-002",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-005",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-012",
+      "mitigation": "UMF-006",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-012",
+      "mitigation": "UMF-095",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-012",
+      "mitigation": "UMF-069",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "UMF-096",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "UMF-095",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-018",
+      "mitigation": "UMF-014",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-030",
+      "mitigation": "UMF-014",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-030",
+      "mitigation": "UMF-059",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-030",
+      "mitigation": "UMF-060",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-030",
+      "mitigation": "UMF-069",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-030",
+      "mitigation": "UMF-035",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-011",
+      "mitigation": "UMF-014",
+      "dual": "UMF-015"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-011",
+      "mitigation": "UMF-015",
+      "dual": "UMF-015"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-071",
+      "mitigation": "UMF-011",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-072",
+      "mitigation": "UMF-014",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-072",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-023",
+      "mitigation": "UMF-014",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-023",
+      "mitigation": "UMF-059",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-023",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-023",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-027",
+      "mitigation": "UMF-077",
+      "dual": "UMF-077"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-101",
+      "mitigation": "UMF-077",
+      "dual": null
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-077",
+      "mitigation": "UMF-069",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "TOXIC",
+      "factor": "UFR-077",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-016",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-071",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-044",
+      "mitigation": "UMF-019",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-044",
+      "mitigation": "UMF-017",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-046",
+      "mitigation": "UMF-016",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-046",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-046",
+      "mitigation": "UMF-071",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-016",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-019",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-071",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-045",
+      "mitigation": "UMF-020",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-019",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-017",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-085",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-085",
+      "mitigation": "UMF-042",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-085",
+      "mitigation": "UMF-071",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-082",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-082",
+      "mitigation": "UMF-056",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-083",
+      "mitigation": "UMF-042",
+      "dual": "UMF-042"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-064",
+      "mitigation": "UMF-042",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-064",
+      "mitigation": "UMF-044",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-084",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-084",
+      "mitigation": "UMF-071",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-022",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-059",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-060",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-023",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-058",
+      "mitigation": "UMF-024",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-059",
+      "mitigation": "UMF-022",
+      "dual": "UMF-022"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-059",
+      "mitigation": "UMF-023",
+      "dual": "UMF-022"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-056",
+      "mitigation": "UMF-026",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-056",
+      "mitigation": "UMF-027",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-056",
+      "mitigation": "UMF-028",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-056",
+      "mitigation": "UMF-059",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-057",
+      "mitigation": "UMF-027",
+      "dual": "UMF-027"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-057",
+      "mitigation": "UMF-060",
+      "dual": "UMF-027"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-047",
+      "mitigation": "UMF-017",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-048",
+      "mitigation": "UMF-017",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-021",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-024",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-043",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-053",
+      "mitigation": "UMF-051",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-053",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-062",
+      "mitigation": "UMF-028",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-062",
+      "mitigation": "UMF-059",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-019",
+      "mitigation": "UMF-092",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-019",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-049",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "AGENCY",
+      "factor": "UFR-049",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-094",
+      "mitigation": "UMF-085",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-094",
+      "mitigation": "UMF-079",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-095",
+      "mitigation": "UMF-080",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-096",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-086",
+      "mitigation": "UMF-056",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-045",
+      "mitigation": "UMF-051",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-045",
+      "mitigation": "UMF-086",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-051",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-042",
+      "mitigation": "UMF-016",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-094",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-082",
+      "mitigation": "UMF-056",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-082",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-031",
+      "mitigation": "UMF-035",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-098",
+      "mitigation": "UMF-083",
+      "dual": "UMF-083"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-046",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-100",
+      "mitigation": "UMF-080",
+      "dual": "UMF-080"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-051",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-043",
+      "mitigation": "UMF-016",
+      "dual": null
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-063",
+      "mitigation": "UMF-045",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-067",
+      "mitigation": "UMF-049",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "SUPPLY",
+      "factor": "UFR-064",
+      "mitigation": "UMF-044",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-013",
+      "mitigation": "UMF-007",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-077",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-077",
+      "mitigation": "UMF-022",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-036",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-011",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-062",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-007",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-028",
+      "mitigation": "UMF-037",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-030",
+      "mitigation": "UMF-033",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-039",
+      "mitigation": "UMF-033",
+      "dual": "UMF-033"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-030",
+      "mitigation": "UMF-062",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-039",
+      "mitigation": "UMF-062",
+      "dual": "UMF-033"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-030",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-034",
+      "mitigation": "UMF-032",
+      "dual": "UMF-032"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-035",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-022",
+      "mitigation": "UMF-090",
+      "dual": "UMF-090"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-020",
+      "mitigation": "UMF-090",
+      "dual": null
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-023",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-024",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-027",
+      "mitigation": "UMF-077",
+      "dual": "UMF-077"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-027",
+      "mitigation": "UMF-076",
+      "dual": "UMF-077"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-072",
+      "mitigation": "UMF-021",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-072",
+      "mitigation": "UMF-022",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-075",
+      "mitigation": "UMF-036",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-075",
+      "mitigation": "UMF-011",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-075",
+      "mitigation": "UMF-065",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-075",
+      "mitigation": "UMF-067",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-075",
+      "mitigation": "UMF-037",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-076",
+      "mitigation": "UMF-031",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-076",
+      "mitigation": "UMF-065",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-076",
+      "mitigation": "UMF-064",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-076",
+      "mitigation": "UMF-067",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-036",
+      "mitigation": "UMF-039",
+      "dual": "UMF-039"
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-037",
+      "mitigation": "UMF-038",
+      "dual": null
+    },
+    {
+      "risk": "KNOW",
+      "factor": "UFR-038",
+      "mitigation": "UMF-040",
+      "dual": "UMF-040"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-014",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-014",
+      "mitigation": "UMF-013",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-014",
+      "mitigation": "UMF-008",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-014",
+      "mitigation": "UMF-009",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-001",
+      "mitigation": "UMF-003",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-001",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-001",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-001",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-001",
+      "mitigation": "UMF-009",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-012",
+      "mitigation": "UMF-069",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-012",
+      "mitigation": "UMF-006",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-002",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-003",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-005",
+      "mitigation": "UMF-001",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-005",
+      "mitigation": "UMF-003",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-029",
+      "mitigation": "UMF-069",
+      "dual": "UMF-034"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-029",
+      "mitigation": "UMF-034",
+      "dual": "UMF-034"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-033",
+      "mitigation": "UMF-013",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-033",
+      "mitigation": "UMF-009",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-033",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-070",
+      "mitigation": "UMF-069",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-070",
+      "mitigation": "UMF-013",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-070",
+      "mitigation": "UMF-059",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-070",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-072",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-011",
+      "mitigation": "UMF-015",
+      "dual": "UMF-015"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-082",
+      "mitigation": "UMF-059",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-082",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-083",
+      "mitigation": "UMF-042",
+      "dual": "UMF-042"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-083",
+      "mitigation": "UMF-041",
+      "dual": "UMF-042"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-041",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-041",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-041",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-086",
+      "mitigation": "UMF-102",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-086",
+      "mitigation": "UMF-056",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-086",
+      "mitigation": "UMF-008",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-093",
+      "mitigation": "UMF-102",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-093",
+      "mitigation": "UMF-009",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-021",
+      "mitigation": "UMF-043",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-021",
+      "mitigation": "UMF-090",
+      "dual": null
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-102",
+      "mitigation": "UMF-013",
+      "dual": "UMF-059"
+    },
+    {
+      "risk": "LEAK",
+      "factor": "UFR-102",
+      "mitigation": "UMF-059",
+      "dual": "UMF-059"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-098",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-002",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-005",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-035",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-002",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-003",
+      "mitigation": "UMF-005",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-063",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-055",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-034",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-035",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-032",
+      "mitigation": "UMF-005",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-060",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-069",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-063",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-063",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-034",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-034",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-035",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-035",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-004",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-018",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-030",
+      "mitigation": "UMF-005",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-031",
+      "mitigation": "UMF-005",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-029",
+      "mitigation": "UMF-055",
+      "dual": "UMF-034"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-029",
+      "mitigation": "UMF-063",
+      "dual": "UMF-034"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-029",
+      "mitigation": "UMF-034",
+      "dual": "UMF-034"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "UMF-004",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-033",
+      "mitigation": "UMF-005",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-049",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-049",
+      "mitigation": "UMF-041",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-006",
+      "mitigation": "UMF-017",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-049",
+      "mitigation": "UMF-017",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-049",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-049",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-048",
+      "mitigation": "UMF-017",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-010",
+      "mitigation": "UMF-069",
+      "dual": "UMF-005"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-010",
+      "mitigation": "UMF-002",
+      "dual": "UMF-005"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-010",
+      "mitigation": "UMF-004",
+      "dual": "UMF-005"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-010",
+      "mitigation": "UMF-018",
+      "dual": "UMF-005"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-010",
+      "mitigation": "UMF-005",
+      "dual": "UMF-005"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-071",
+      "mitigation": "UMF-013",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-071",
+      "mitigation": "UMF-012",
+      "dual": "UMF-012"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-047",
+      "mitigation": "UMF-021",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-047",
+      "mitigation": "UMF-013",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-047",
+      "mitigation": "UMF-017",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-058",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-058",
+      "mitigation": "UMF-013",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-012",
+      "mitigation": "UMF-069",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-012",
+      "mitigation": "UMF-006",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-069",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-013",
+      "mitigation": "UMF-006",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "IPI",
+      "factor": "UFR-088",
+      "mitigation": "UMF-098",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-023",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-024",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-024",
+      "mitigation": "UMF-011",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-024",
+      "mitigation": "UMF-028",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-025",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-025",
+      "mitigation": "UMF-030",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-025",
+      "mitigation": "UMF-060",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-026",
+      "mitigation": "UMF-076",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-026",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-026",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-007",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-037",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-036",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-062",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-076",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-028",
+      "mitigation": "UMF-069",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-030",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-034",
+      "mitigation": "UMF-031",
+      "dual": "UMF-032"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-034",
+      "mitigation": "UMF-032",
+      "dual": "UMF-032"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-030",
+      "mitigation": "UMF-062",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-034",
+      "mitigation": "UMF-062",
+      "dual": "UMF-032"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-030",
+      "mitigation": "UMF-076",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-034",
+      "mitigation": "UMF-076",
+      "dual": "UMF-032"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-013",
+      "mitigation": "UMF-007",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-013",
+      "mitigation": "UMF-031",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-013",
+      "mitigation": "UMF-037",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-013",
+      "mitigation": "UMF-069",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-020",
+      "mitigation": "UMF-031",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-022",
+      "mitigation": "UMF-031",
+      "dual": "UMF-090"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-020",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-022",
+      "mitigation": "UMF-090",
+      "dual": "UMF-090"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-020",
+      "mitigation": "UMF-037",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-022",
+      "mitigation": "UMF-037",
+      "dual": "UMF-090"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-039",
+      "mitigation": "UMF-033",
+      "dual": "UMF-033"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-039",
+      "mitigation": "UMF-062",
+      "dual": "UMF-033"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-039",
+      "mitigation": "UMF-076",
+      "dual": "UMF-033"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-072",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-036",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-072",
+      "mitigation": "UMF-036",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-022",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-072",
+      "mitigation": "UMF-022",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-067",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-072",
+      "mitigation": "UMF-067",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-035",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-035",
+      "mitigation": "UMF-036",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-079",
+      "mitigation": "UMF-036",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-062",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-079",
+      "mitigation": "UMF-062",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-079",
+      "mitigation": "UMF-067",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-070",
+      "mitigation": "UMF-076",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-079",
+      "mitigation": "UMF-076",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-053",
+      "mitigation": "UMF-051",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-053",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-056",
+      "mitigation": "UMF-026",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-056",
+      "mitigation": "UMF-030",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-056",
+      "mitigation": "UMF-028",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-056",
+      "mitigation": "UMF-060",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-061",
+      "mitigation": "UMF-029",
+      "dual": "UMF-029"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-061",
+      "mitigation": "UMF-028",
+      "dual": "UMF-029"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-061",
+      "mitigation": "UMF-060",
+      "dual": "UMF-029"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-061",
+      "mitigation": "UMF-027",
+      "dual": "UMF-029"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-066",
+      "mitigation": "UMF-088",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-066",
+      "mitigation": "UMF-061",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-066",
+      "mitigation": "UMF-024",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-067",
+      "mitigation": "UMF-049",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-067",
+      "mitigation": "UMF-061",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-074",
+      "mitigation": "UMF-067",
+      "dual": "UMF-064"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-074",
+      "mitigation": "UMF-064",
+      "dual": "UMF-064"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-075",
+      "mitigation": "UMF-022",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-075",
+      "mitigation": "UMF-065",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-076",
+      "mitigation": "UMF-065",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-076",
+      "mitigation": "UMF-066",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-022",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-088",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-031",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-069",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-077",
+      "mitigation": "UMF-073",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "HALL",
+      "factor": "UFR-073",
+      "mitigation": "UMF-073",
+      "dual": "UMF-094"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-074",
+      "mitigation": "UMF-064",
+      "dual": "UMF-064"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-028",
+      "mitigation": "UMF-036",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-028",
+      "mitigation": "UMF-065",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-028",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-023",
+      "mitigation": "UMF-022",
+      "dual": null
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-070",
+      "mitigation": "UMF-067",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-070",
+      "mitigation": "UMF-011",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-070",
+      "mitigation": "UMF-014",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-075",
+      "mitigation": "UMF-031",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-075",
+      "mitigation": "UMF-065",
+      "dual": "UMF-065"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-103",
+      "mitigation": "UMF-028",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-074",
+      "mitigation": "UMF-068",
+      "dual": "UMF-064"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-081",
+      "mitigation": "UMF-093",
+      "dual": "UMF-093"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-081",
+      "mitigation": "UMF-069",
+      "dual": "UMF-093"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-081",
+      "mitigation": "UMF-014",
+      "dual": "UMF-093"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-081",
+      "mitigation": "UMF-004",
+      "dual": "UMF-093"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-030",
+      "mitigation": "UMF-088",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-030",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-035",
+      "mitigation": "UMF-031",
+      "dual": "UMF-031"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-059",
+      "mitigation": "UMF-022",
+      "dual": "UMF-022"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-102",
+      "mitigation": "UMF-059",
+      "dual": "UMF-059"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-076",
+      "mitigation": "UMF-065",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-076",
+      "mitigation": "UMF-022",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-076",
+      "mitigation": "UMF-064",
+      "dual": "UMF-066"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-066",
+      "mitigation": "UMF-088",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-019",
+      "mitigation": "UMF-088",
+      "dual": null
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-079",
+      "mitigation": "UMF-067",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-079",
+      "mitigation": "UMF-036",
+      "dual": "UMF-036"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-078",
+      "mitigation": "UMF-069",
+      "dual": "UMF-068"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-078",
+      "mitigation": "UMF-014",
+      "dual": "UMF-068"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-078",
+      "mitigation": "UMF-004",
+      "dual": "UMF-068"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-078",
+      "mitigation": "UMF-068",
+      "dual": "UMF-068"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-103",
+      "mitigation": "UMF-059",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-073",
+      "mitigation": "UMF-069",
+      "dual": "UMF-094"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-073",
+      "mitigation": "UMF-036",
+      "dual": "UMF-094"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-073",
+      "mitigation": "UMF-014",
+      "dual": "UMF-094"
+    },
+    {
+      "risk": "DISINFO",
+      "factor": "UFR-073",
+      "mitigation": "UMF-031",
+      "dual": "UMF-094"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-068",
+      "mitigation": "UMF-046",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-068",
+      "mitigation": "UMF-100",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-064",
+      "mitigation": "UMF-016",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-064",
+      "mitigation": "UMF-044",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-068",
+      "mitigation": "UMF-027",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-068",
+      "mitigation": "UMF-028",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-017",
+      "mitigation": "UMF-010",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-017",
+      "mitigation": "",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-016",
+      "mitigation": "UMF-010",
+      "dual": "UMF-010"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-063",
+      "mitigation": "UMF-045",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-063",
+      "mitigation": "UMF-059",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-063",
+      "mitigation": "UMF-060",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-063",
+      "mitigation": "UMF-055",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-065",
+      "mitigation": "UMF-047",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-065",
+      "mitigation": "UMF-069",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-064",
+      "mitigation": "UMF-041",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-064",
+      "mitigation": "UMF-061",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-047",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-048",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-027",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-028",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-061",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-060",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-066",
+      "mitigation": "UMF-069",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-067",
+      "mitigation": "UMF-049",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-019",
+      "mitigation": "UMF-049",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-020",
+      "mitigation": "UMF-047",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-067",
+      "mitigation": "UMF-047",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-020",
+      "mitigation": "UMF-050",
+      "dual": null
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-067",
+      "mitigation": "UMF-050",
+      "dual": "UMF-049"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-065",
+      "mitigation": "UMF-010",
+      "dual": "UMF-047"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-050",
+      "mitigation": "UMF-020",
+      "dual": "UMF-100"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-050",
+      "mitigation": "UMF-100",
+      "dual": "UMF-100"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-050",
+      "mitigation": "UMF-069",
+      "dual": "UMF-100"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-069",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-082",
+      "mitigation": "UMF-041",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-082",
+      "mitigation": "UMF-056",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "MULTI",
+      "factor": "UFR-069",
+      "mitigation": "UMF-016",
+      "dual": "UMF-041"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-006",
+      "mitigation": "UMF-063",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-006",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-006",
+      "mitigation": "UMF-006",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-013",
+      "mitigation": "UMF-069",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-013",
+      "mitigation": "UMF-007",
+      "dual": "UMF-007"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-012",
+      "mitigation": "UMF-063",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-012",
+      "mitigation": "UMF-018",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-012",
+      "mitigation": "UMF-006",
+      "dual": "UMF-103"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-019",
+      "mitigation": "UMF-092",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-063",
+      "mitigation": "UMF-044",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-063",
+      "mitigation": "UMF-045",
+      "dual": "UMF-045"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-049",
+      "mitigation": "UMF-063",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-049",
+      "mitigation": "UMF-018",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-006",
+      "mitigation": "UMF-007",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-049",
+      "mitigation": "UMF-007",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-053",
+      "mitigation": "UMF-021",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-053",
+      "mitigation": "UMF-051",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-053",
+      "mitigation": "UMF-053",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-044",
+      "mitigation": "UMF-019",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-044",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-054",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-044",
+      "mitigation": "UMF-053",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-054",
+      "mitigation": "UMF-053",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-044",
+      "mitigation": "UMF-052",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-054",
+      "mitigation": "UMF-052",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-053",
+      "mitigation": "UMF-069",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-055",
+      "mitigation": "UMF-021",
+      "dual": null
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-072",
+      "mitigation": "UMF-019",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-072",
+      "mitigation": "UMF-017",
+      "dual": "UMF-011"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-047",
+      "mitigation": "UMF-017",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-048",
+      "mitigation": "UMF-018",
+      "dual": "UMF-017"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-056",
+      "mitigation": "UMF-060",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-056",
+      "mitigation": "UMF-059",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-056",
+      "mitigation": "UMF-091",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-056",
+      "mitigation": "UMF-027",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-056",
+      "mitigation": "UMF-026",
+      "dual": "UMF-026"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-064",
+      "mitigation": "UMF-044",
+      "dual": "UMF-044"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-058",
+      "mitigation": "UMF-023",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-058",
+      "mitigation": "UMF-053",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-058",
+      "mitigation": "UMF-021",
+      "dual": "UMF-021"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-057",
+      "mitigation": "UMF-027",
+      "dual": "UMF-027"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-042",
+      "mitigation": "UMF-016",
+      "dual": "UMF-016"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-060",
+      "mitigation": "UMF-060",
+      "dual": "UMF-025"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-060",
+      "mitigation": "UMF-059",
+      "dual": "UMF-025"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-060",
+      "mitigation": "UMF-091",
+      "dual": "UMF-025"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-060",
+      "mitigation": "UMF-025",
+      "dual": "UMF-025"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-062",
+      "mitigation": "UMF-059",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-062",
+      "mitigation": "UMF-060",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-062",
+      "mitigation": "UMF-028",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-062",
+      "mitigation": "UMF-016",
+      "dual": "UMF-028"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-088",
+      "mitigation": "UMF-055",
+      "dual": "UMF-055"
+    },
+    {
+      "risk": "GH_RCE",
+      "factor": "UFR-086",
+      "mitigation": "UMF-056",
+      "dual": null
+    }
+  ],
+  "our_scope": [
+    "TOXIC",
+    "HALL",
+    "DISINFO",
+    "AGENCY",
+    "GH_RCE"
+  ],
+  "risk_labels": {
+    "DPI": "directInjections",
+    "TOXIC": "toxicity",
+    "AGENCY": "excessiveAutonomy",
+    "SUPPLY": "configurationVulnerability",
+    "KNOW": "degradation",
+    "LEAK": "dataLeak",
+    "IPI": "indirectInjections",
+    "HALL": "hallucination",
+    "DISINFO": "disinformation",
+    "MULTI": "multiagentInteractionFailure",
+    "GH_RCE": "hiddenGoals",
+    "LIMIT": "resourceAbuse",
+    "TOOLS": "incorrectToolUsage"
+  }
+}
