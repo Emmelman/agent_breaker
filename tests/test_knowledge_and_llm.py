@@ -3,6 +3,7 @@
 """
 
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -92,32 +93,64 @@ def test_kb_missing_file_raises():
         pass
 
 
-# --- CC-05: LLM Client (юнит-тесты без реального LLM) ---
+# --- CC-05: LLM Client (юнит-тесты без реального GigaChat) ---
+
+# Фиктивные mTLS-сертификаты для конструирования LLMClient в тестах.
+# HTTP-вызовы замоканы, поэтому содержимое файлов не важно — важно их наличие.
+_CERT_DIR = tempfile.mkdtemp(prefix="ab_test_certs_")
+_CERT_PATH = str(Path(_CERT_DIR) / "client_cert.pem")
+_KEY_PATH = str(Path(_CERT_DIR) / "client_key.pem")
+for _p in (_CERT_PATH, _KEY_PATH):
+    Path(_p).write_text("test-fixture")
+
+
+def _make_client(base_url="https://gigachat-test.local/v1"):
+    """LLMClient с фиктивными сертификатами для юнит-тестов."""
+    return LLMClient(base_url=base_url, cert_path=_CERT_PATH, key_path=_KEY_PATH)
+
+
+def _mock_response(content, total_tokens):
+    """Мок ответа GigaChat в форме requests.Response."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "choices": [{"message": {"content": content}}],
+        "usage": {"total_tokens": total_tokens},
+    }
+    return resp
 
 
 def test_llm_client_init():
     """LLMClient инициализируется без ошибок."""
-    client = LLMClient(base_url="http://127.0.0.1:1234")
-    assert client.model == "gemma-3-12b-it"
+    client = _make_client()
+    assert client.model == "GigaChat-2-Max"
     assert client.total_tokens_used == 0
 
 
 def test_llm_client_url_normalization():
     """URL нормализуется — добавляется /v1."""
-    client = LLMClient(base_url="http://localhost:1234")
-    # Проверяем через внутренний клиент
-    assert client._client.base_url.path == "/v1/"
+    client = _make_client(base_url="https://gigachat-test.local")
+    assert client.endpoint == "https://gigachat-test.local/v1/chat/completions"
 
 
 def test_llm_client_url_no_double_v1():
     """Если URL уже с /v1, не дублируется."""
-    client = LLMClient(base_url="http://localhost:1234/v1")
-    assert "/v1/v1" not in str(client._client.base_url)
+    client = _make_client(base_url="https://gigachat-test.local/v1")
+    assert "/v1/v1" not in client.endpoint
+
+
+def test_llm_client_cert_missing():
+    """Отсутствие сертификата — понятная ошибка FileNotFoundError."""
+    try:
+        LLMClient(cert_path="/nonexistent/cert.pem", key_path="/nonexistent/key.pem")
+        assert False, "Должен быть FileNotFoundError"
+    except FileNotFoundError:
+        pass
 
 
 def test_llm_client_reset_tokens():
     """reset_token_counter сбрасывает счётчик."""
-    client = LLMClient(base_url="http://127.0.0.1:1234")
+    client = _make_client()
     client._total_tokens = 500
     client.reset_token_counter()
     assert client.total_tokens_used == 0
@@ -125,32 +158,18 @@ def test_llm_client_reset_tokens():
 
 def test_llm_client_chat_mock():
     """chat() возвращает текст (мок)."""
-    client = LLMClient(base_url="http://127.0.0.1:1234")
-
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Тестовый ответ"
-    mock_response.usage.total_tokens = 100
-
-    with patch.object(client._client.chat.completions, "create", return_value=mock_response):
+    client = _make_client()
+    with patch.object(client._session, "post", return_value=_mock_response("Тестовый ответ", 100)):
         result = client.chat([{"role": "user", "content": "Привет"}])
-
     assert result == "Тестовый ответ"
     assert client.total_tokens_used == 100
 
 
 def test_llm_client_chat_json_mock():
     """chat_json() парсит JSON-ответ."""
-    client = LLMClient(base_url="http://127.0.0.1:1234")
-
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = '{"key": "value"}'
-    mock_response.usage.total_tokens = 50
-
-    with patch.object(client._client.chat.completions, "create", return_value=mock_response):
+    client = _make_client()
+    with patch.object(client._session, "post", return_value=_mock_response('{"key": "value"}', 50)):
         result = client.chat_json([{"role": "user", "content": "JSON"}])
-
     assert result == {"key": "value"}
 
 

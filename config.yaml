@@ -1,31 +1,39 @@
 # Конфигурация Agent-Breaker v2
 
 llm:
-  base_url: "http://127.0.0.1:1234"
+  # GigaChat (банковский IFT-контур), доступ по mTLS-сертификатам
+  base_url: "https://gigachat-ift.sberdevices.delta.sbrf.ru/v1"
+  # Пути к клиентским сертификатам (относительно этого config.yaml).
+  # Сами файлы кладутся в v2/certs/ вручную и НЕ коммитятся в git.
+  cert_path: "certs/client_cert.pem"
+  key_path: "certs/client_key.pem"
+  # Проверка серверного TLS-сертификата. false — отключить (защита на mTLS),
+  # либо путь к корневому CA-bundle банка.
+  verify_ssl: false
   timeout: 120
   max_retries: 3
 
-  # Multi-model: разные LLM для разных ролей (Ouroboros pattern)
+  # Multi-model: разные роли (Ouroboros pattern). В банке все роли — GigaChat.
   models:
     attacker:
-      model: "gemma-3-12b-it"
+      model: "GigaChat-2-Max"
       temperature: 0.7
       max_tokens: 2048
     judge:
-      model: "qwen3-8b"
+      model: "GigaChat-2-Max"
       temperature: 0.1
       max_tokens: 1024
     reviewer:
-      model: "qwen3-8b"
+      model: "GigaChat-2-Max"
       temperature: 0.3
       max_tokens: 1024
     thinker:
-      model: "qwen3-8b"
+      model: "GigaChat-2-Max"
       temperature: 0.3
       max_tokens: 512
 
   # Fallback-модель если роль не настроена
-  fallback_model: "gemma-3-12b-it"
+  fallback_model: "GigaChat-2-Max"
 
 target:
   api_url: "http://localhost:8000/api/chat"

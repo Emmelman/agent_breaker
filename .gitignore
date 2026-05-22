@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Secrets — mTLS client certificates (GigaChat). NEVER commit.
+certs/*
+!certs/README.md
+*.pem
+*_key.pem
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

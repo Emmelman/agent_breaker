@@ -10,7 +10,7 @@
 **Agent-Breaker v2** — фреймворк для автоматического тестирования безопасности ИИ-агентов с эволюцией атак (Ouroboros/OpenClaw pattern).
 
 - **5 рисков**: TOXIC, HALL, DISINFO, AGENCY, GH_RCE
-- **Стек**: Python 3.12, NiceGUI, OpenAI-compatible LLM API (LLM Studio)
+- **Стек**: Python 3.12, NiceGUI, GigaChat API (mTLS, банковский контур)
 - **Архитектура**: pipeline generate -> run -> score -> evolve с агентным планированием
 - **Multi-model**: разные LLM для генерации (attacker), оценки (judge), ревью (reviewer)
 - **KB-aware режим**: HALL и DISINFO (с RAG-факторами) используют KB целевого агента
@@ -45,9 +45,8 @@ graph TB
         BG["Фоновый анализ<br/>каждые 30 сек"]
     end
 
-    subgraph LLM["LM Studio (localhost:1234)"]
-        Gemma["gemma-3-12b-it<br/>attacker"]
-        Qwen["qwen3-8b<br/>judge / reviewer / thinker"]
+    subgraph LLM["GigaChat (mTLS, IFT-контур)"]
+        Giga["GigaChat-2-Max<br/>attacker / judge / reviewer / thinker"]
     end
 
     subgraph Target["Target Agent"]
@@ -103,10 +102,10 @@ graph TB
 
 | Компонент | Технология | Назначение |
 |-----------|-----------|-----------|
-| LLM сервер | LM Studio | Локальный inference, OpenAI-compatible |
-| Attacker | gemma-3-12b-it | Генерация, reflect, mutate, planner |
-| Judge | qwen3-8b | Scoring, review, thinker |
-| API | OpenAI Chat Completions | /v1/chat/completions |
+| LLM сервер | GigaChat (банковский IFT-контур) | Inference по mTLS-сертификатам |
+| Attacker | GigaChat-2-Max | Генерация, reflect, mutate, planner |
+| Judge | GigaChat-2-Max | Scoring, review, thinker |
+| API | GigaChat Chat Completions | /v1/chat/completions |
 | Multi-model | LLMFactory | Маршрутизация по ролям из config.yaml |
 
 ### Паттерны и вдохновения
@@ -241,7 +240,7 @@ v2/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── llm_client.py           # LLMClient (OpenAI-compatible) + LLMFactory (multi-model)
+│   ├── llm_client.py           # LLMClient (GigaChat, mTLS) + LLMFactory (multi-model)
 │   ├── attack_generator.py     # Генерация single-turn + multi-turn атак, мутации
 │   ├── attack_runner.py        # HTTP клиент: run_attack, run_batch, run_chain, check_target
 │   ├── response_scorer.py      # LLM-as-Judge: score, score_batch, score_chain + guards

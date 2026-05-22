@@ -1,43 +1,88 @@
 """
 LLM Client для Agent-Breaker v2.
 
-Поддерживает OpenAI-compatible API (LLM Studio), синхронный и асинхронный режимы,
-retry с exponential backoff, подсчёт токенов.
+Подключение к GigaChat (банковский контур) по mTLS-сертификатам.
+Транспорт повторяет проверенный банковский скрипт: requests + cert=(cert, key).
+Синхронный и асинхронный режимы, retry с exponential backoff, подсчёт токенов.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import os
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+import requests
 
 logger = logging.getLogger(__name__)
 
-# Ошибки, при которых делаем retry
-_RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
+# Сетевые ошибки, при которых делаем retry
+_RETRYABLE_ERRORS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
+# HTTP-статусы, при которых делаем retry (перегрузка / временные сбои сервера)
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 # Параметры retry
 _MAX_RETRIES = 3
 _BASE_DELAY = 2.0
 _TIMEOUT = 120
 
+# Дефолты GigaChat (банковский IFT-контур)
+_DEFAULT_BASE_URL = "https://gigachat-ift.sberdevices.delta.sbrf.ru/v1"
+_DEFAULT_MODEL = "GigaChat-2-Max"
+
+# Подавление InsecureRequestWarning делается один раз на процесс
+_warning_suppressed = False
+
+
+def _suppress_insecure_warning() -> None:
+    """Подавить urllib3 InsecureRequestWarning при verify=False (однократно)."""
+    global _warning_suppressed
+    if _warning_suppressed:
+        return
+    try:
+        import urllib3
+
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    _warning_suppressed = True
+
 
 class LLMClient:
-    """Клиент для OpenAI-compatible LLM API (LLM Studio)."""
+    """Клиент для GigaChat chat-completions API через mTLS."""
 
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:1234/v1",
-        model: str = "gemma-3-12b-it",
+        base_url: str = _DEFAULT_BASE_URL,
+        model: str = _DEFAULT_MODEL,
+        *,
+        cert_path: str,
+        key_path: str,
+        verify_ssl: bool | str = False,
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: int = _TIMEOUT,
         max_retries: int = _MAX_RETRIES,
     ) -> None:
+        """
+        Args:
+            base_url: Базовый URL GigaChat (с суффиксом /v1 — добавляется автоматически).
+            model: Имя модели GigaChat.
+            cert_path: Путь к клиентскому сертификату (PEM-файл).
+            key_path: Путь к файлу приватного ключа клиента (PEM-файл).
+            verify_ssl: Проверка серверного TLS-сертификата. False — отключить
+                (защита остаётся на mTLS), либо путь к CA-bundle.
+            temperature: Температура генерации по умолчанию.
+            max_tokens: Лимит токенов ответа по умолчанию.
+            timeout: Таймаут HTTP-запроса, сек.
+            max_retries: Число попыток при сетевых сбоях.
+        """
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -46,15 +91,28 @@ class LLMClient:
         self._total_tokens = 0
 
         # Нормализуем URL — добавляем /v1 если нужно
-        if not base_url.endswith("/v1"):
-            base_url = base_url.rstrip("/") + "/v1"
+        normalized = base_url.rstrip("/")
+        if not normalized.endswith("/v1"):
+            normalized = normalized + "/v1"
+        self._base_url = normalized
+        self._endpoint = f"{self._base_url}/chat/completions"
 
-        self._client = OpenAI(
-            base_url=base_url,
-            api_key="not-needed",
-            timeout=timeout,
-        )
-        logger.info("LLM client инициализирован: %s, модель: %s", base_url, model)
+        # Проверяем сертификаты на старте — понятная ошибка вместо туманного TLS-сбоя
+        for label, fpath in (("client cert", cert_path), ("client key", key_path)):
+            if not fpath or not os.path.isfile(fpath):
+                raise FileNotFoundError(
+                    f"GigaChat {label} не найден: {fpath!r}. "
+                    f"Положите mTLS-сертификаты в v2/certs/ (см. v2/certs/README.md)."
+                )
+
+        # mTLS-сессия: клиентский сертификат + ключ на все запросы
+        self._session = requests.Session()
+        self._session.cert = (cert_path, key_path)
+        self._session.verify = verify_ssl
+        if verify_ssl is False:
+            _suppress_insecure_warning()
+
+        logger.info("LLM client инициализирован: %s, модель: %s", self._endpoint, model)
 
     def chat(
         self,
@@ -62,57 +120,85 @@ class LLMClient:
         *,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Синхронный вызов LLM.
+        Синхронный вызов GigaChat.
 
         Args:
             messages: Список сообщений [{role, content}].
             temperature: Переопределение температуры.
             max_tokens: Переопределение max_tokens.
-            response_format: Формат ответа (например, {"type": "json_object"}).
 
         Returns:
             Текст ответа модели.
+
+        Raises:
+            ConnectionError: GigaChat недоступен или вернул некорректный ответ.
         """
+        payload: Dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self._temperature,
+            "max_tokens": max_tokens or self._max_tokens,
+            "stream": False,
+        }
+
         last_error: Optional[Exception] = None
 
         for attempt in range(1, self._max_retries + 1):
             try:
-                kwargs: Dict[str, Any] = {
-                    "model": self._model,
-                    "messages": messages,
-                    "temperature": temperature if temperature is not None else self._temperature,
-                    "max_tokens": max_tokens or self._max_tokens,
-                }
-                if response_format:
-                    kwargs["response_format"] = response_format
+                response = self._session.post(
+                    self._endpoint, json=payload, timeout=self._timeout
+                )
 
-                response = self._client.chat.completions.create(**kwargs)
+                # Временные сбои сервера — повторяем
+                if response.status_code in _RETRYABLE_STATUS:
+                    last_error = RuntimeError(
+                        f"HTTP {response.status_code}: {response.text[:300]}"
+                    )
+                    self._sleep_backoff(attempt, last_error)
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
 
                 # Подсчёт токенов
-                if response.usage:
-                    self._total_tokens += response.usage.total_tokens
+                usage = data.get("usage") or {}
+                self._total_tokens += usage.get("total_tokens", 0)
 
-                content = response.choices[0].message.content or ""
+                content = data["choices"][0]["message"]["content"] or ""
                 return content.strip()
 
             except _RETRYABLE_ERRORS as e:
                 last_error = e
-                delay = _BASE_DELAY * (2 ** (attempt - 1))
-                logger.warning(
-                    "LLM запрос неудачен (попытка %d/%d): %s. Повтор через %.1f сек.",
-                    attempt,
-                    self._max_retries,
-                    e,
-                    delay,
-                )
-                time.sleep(delay)
+                self._sleep_backoff(attempt, e)
+            except (
+                requests.exceptions.HTTPError,
+                KeyError,
+                IndexError,
+                ValueError,
+                TypeError,
+            ) as e:
+                # Некорректный запрос/ответ — повторять бессмысленно
+                raise ConnectionError(
+                    f"GigaChat вернул некорректный ответ: {e}"
+                ) from e
 
         raise ConnectionError(
-            f"LLM недоступен после {self._max_retries} попыток: {last_error}"
+            f"GigaChat недоступен после {self._max_retries} попыток: {last_error}"
         )
+
+    def _sleep_backoff(self, attempt: int, error: Exception) -> None:
+        """Экспоненциальная задержка между попытками retry."""
+        delay = _BASE_DELAY * (2 ** (attempt - 1))
+        logger.warning(
+            "LLM запрос неудачен (попытка %d/%d): %s. Повтор через %.1f сек.",
+            attempt,
+            self._max_retries,
+            error,
+            delay,
+        )
+        time.sleep(delay)
 
     async def achat(
         self,
@@ -120,10 +206,9 @@ class LLMClient:
         *,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Асинхронный вызов LLM.
+        Асинхронный вызов GigaChat.
 
         Оборачивает синхронный вызов в asyncio executor,
         чтобы не блокировать event loop.
@@ -135,7 +220,6 @@ class LLMClient:
                 messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format=response_format,
             ),
         )
 
@@ -146,17 +230,17 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> Any:
-        """Вызов LLM с ожиданием JSON-ответа. Парсит результат."""
-        from core.utils import strip_llm_wrapper
+        """
+        Вызов GigaChat с ожиданием JSON-ответа.
 
-        raw = self.chat(
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
-        )
-        text = strip_llm_wrapper(raw)
-        return json.loads(text)
+        GigaChat не поддерживает OpenAI JSON-mode (response_format), поэтому
+        результат парсится из текста через parse_llm_json (устойчив к
+        markdown-обёрткам и служебным тегам).
+        """
+        from core.utils import parse_llm_json
+
+        raw = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        return parse_llm_json(raw)
 
     @property
     def total_tokens_used(self) -> int:
@@ -168,6 +252,11 @@ class LLMClient:
         """Текущая модель."""
         return self._model
 
+    @property
+    def endpoint(self) -> str:
+        """Полный URL chat-completions эндпоинта."""
+        return self._endpoint
+
     def reset_token_counter(self) -> None:
         """Сброс счётчика токенов."""
         self._total_tokens = 0
@@ -177,7 +266,8 @@ class LLMFactory:
     """
     Фабрика LLM клиентов с разными ролями (Ouroboros multi-model pattern).
 
-    Роли: attacker (генерация), judge (оценка), reviewer (ревью мутаций).
+    Роли: attacker (генерация), judge (оценка), reviewer (ревью мутаций),
+    thinker (фоновый анализ). Все роли ходят в GigaChat по общему mTLS-каналу.
     """
 
     def __init__(self, config_path: str | None = None, config: dict | None = None) -> None:
@@ -187,30 +277,45 @@ class LLMFactory:
             config: Готовый словарь конфигурации (приоритет над config_path).
         """
         self._clients: Dict[str, LLMClient] = {}
+        v2_root = Path(__file__).resolve().parent.parent
 
-        if config:
+        if config is not None:
             self._config = config
+            # Относительные пути к сертификатам резолвятся от корня v2/
+            self._config_dir = v2_root
         elif config_path:
             self._config = self._load_config(config_path)
+            self._config_dir = Path(config_path).resolve().parent
         else:
-            # Дефолтный путь
-            from pathlib import Path
-            default_path = Path(__file__).parent.parent / "config.yaml"
+            default_path = v2_root / "config.yaml"
             self._config = self._load_config(str(default_path))
+            self._config_dir = default_path.parent
 
         llm_cfg = self._config.get("llm", {})
-        self._base_url = llm_cfg.get("base_url", "http://127.0.0.1:1234")
-        self._fallback = llm_cfg.get("fallback_model", "gemma-3-12b-it")
+        self._base_url = llm_cfg.get("base_url", _DEFAULT_BASE_URL)
+        self._fallback = llm_cfg.get("fallback_model", _DEFAULT_MODEL)
         self._timeout = llm_cfg.get("timeout", _TIMEOUT)
         self._max_retries = llm_cfg.get("max_retries", _MAX_RETRIES)
         self._models_config = llm_cfg.get("models", {})
+        self._verify_ssl = llm_cfg.get("verify_ssl", False)
+        self._cert_path = self._resolve_path(llm_cfg.get("cert_path"))
+        self._key_path = self._resolve_path(llm_cfg.get("key_path"))
+
+    def _resolve_path(self, fpath: str | None) -> str | None:
+        """Разрешить путь к сертификату относительно расположения config.yaml."""
+        if not fpath:
+            return fpath
+        p = Path(fpath)
+        if not p.is_absolute():
+            p = self._config_dir / p
+        return str(p)
 
     def get_client(self, role: str) -> LLMClient:
         """
         Получить LLM клиент по роли.
 
-        Роли: "attacker", "judge", "reviewer".
-        Если роль не настроена — возвращает fallback.
+        Роли: "attacker", "judge", "reviewer", "thinker".
+        Если роль не настроена — используется fallback-модель.
         """
         if role not in self._clients:
             model_config = self._models_config.get(role, {})
@@ -221,6 +326,9 @@ class LLMFactory:
             self._clients[role] = LLMClient(
                 base_url=self._base_url,
                 model=model,
+                cert_path=self._cert_path,
+                key_path=self._key_path,
+                verify_ssl=self._verify_ssl,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=self._timeout,
@@ -253,5 +361,6 @@ class LLMFactory:
     @staticmethod
     def _load_config(path: str) -> dict:
         import yaml
+
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)

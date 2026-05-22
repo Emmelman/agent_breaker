@@ -58,8 +58,8 @@ class AppState:
         self.report: Optional[SessionReport] = None
 
         self.target_url: str = "http://localhost:8000/api/chat"
-        self.llm_base_url: str = "http://127.0.0.1:1234"
-        self.llm_model: str = "gemma-3-12b-it"
+        self.llm_base_url: str = "https://gigachat-ift.sberdevices.delta.sbrf.ru/v1"
+        self.llm_model: str = "GigaChat-2-Max"
         # Идентификация целевого агента (level-2 память привязана к agent_id).
         self.agent_id: str = "chatbot-professor_v2"
         self.agent_version: str = "v2"

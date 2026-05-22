@@ -21,6 +21,13 @@ from models.schemas import (
     RiskConfig,
 )
 
+# Фиктивные mTLS-сертификаты для конструирования LLMClient в тестах.
+_CERT_DIR = tempfile.mkdtemp(prefix="ab_test_certs_")
+_CERT_PATH = str(Path(_CERT_DIR) / "client_cert.pem")
+_KEY_PATH = str(Path(_CERT_DIR) / "client_key.pem")
+for _p in (_CERT_PATH, _KEY_PATH):
+    Path(_p).write_text("test-fixture")
+
 
 # ═══════════════════════════════════════
 #  CC-18: LLMFactory
@@ -31,7 +38,10 @@ def test_llm_factory_creates_different_clients():
     """LLMFactory создаёт клиенты с разными моделями."""
     config = {
         "llm": {
-            "base_url": "http://127.0.0.1:1234",
+            "base_url": "https://gigachat-test.local/v1",
+            "cert_path": _CERT_PATH,
+            "key_path": _KEY_PATH,
+            "verify_ssl": False,
             "timeout": 10,
             "max_retries": 1,
             "models": {
@@ -50,7 +60,10 @@ def test_llm_factory_fallback():
     """LLMFactory использует fallback при неизвестной роли."""
     config = {
         "llm": {
-            "base_url": "http://127.0.0.1:1234",
+            "base_url": "https://gigachat-test.local/v1",
+            "cert_path": _CERT_PATH,
+            "key_path": _KEY_PATH,
+            "verify_ssl": False,
             "timeout": 10,
             "max_retries": 1,
             "models": {},
@@ -66,7 +79,10 @@ def test_llm_factory_reviewer():
     """LLMFactory создаёт reviewer."""
     config = {
         "llm": {
-            "base_url": "http://127.0.0.1:1234",
+            "base_url": "https://gigachat-test.local/v1",
+            "cert_path": _CERT_PATH,
+            "key_path": _KEY_PATH,
+            "verify_ssl": False,
             "timeout": 10,
             "max_retries": 1,
             "models": {
